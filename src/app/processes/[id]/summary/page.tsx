@@ -48,6 +48,13 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
   const [editAutomationText, setEditAutomationText] = useState('')
 
+  // Checklist state
+  const [checklist, setChecklist] = useState({
+    improvements: false,
+    automations: false,
+    summary: false
+  })
+
   useEffect(() => {
     fetchData()
   }, [params.id])
@@ -350,6 +357,11 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   }
 
   const handleMarkAsReady = async () => {
+    if (!checklist.improvements || !checklist.automations || !checklist.summary) {
+      alert('Por favor completa el checklist final antes de continuar.')
+      return
+    }
+
     setLoading(true)
     try {
       const { error } = await supabase
@@ -739,11 +751,45 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                </div>
             </div>
             
-            <div className="flex gap-4 mt-6">
+            {/* Checklist Final */}
+            <div className="mt-8 border-t pt-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Checklist final</h3>
+              <div className="space-y-3">
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={checklist.improvements}
+                    onChange={(e) => setChecklist(prev => ({ ...prev, improvements: e.target.checked }))}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="text-gray-700">He revisado las oportunidades de <strong>mejora del proceso</strong>.</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={checklist.automations}
+                    onChange={(e) => setChecklist(prev => ({ ...prev, automations: e.target.checked }))}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="text-gray-700">He revisado las oportunidades de automatización.</span>
+                </label>
+                <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
+                  <input 
+                    type="checkbox" 
+                    checked={checklist.summary}
+                    onChange={(e) => setChecklist(prev => ({ ...prev, summary: e.target.checked }))}
+                    className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
+                  />
+                  <span className="text-gray-700">Estoy conforme con el resumen del flujo de trabajo.</span>
+                </label>
+              </div>
+            </div>
+
+            <div className="flex gap-4 mt-8">
               <button
                 onClick={handleMarkAsReady}
-                disabled={loading}
-                className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400"
+                disabled={loading || !checklist.improvements || !checklist.automations || !checklist.summary}
+                className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-300 disabled:cursor-not-allowed"
               >
                 {loading ? 'Guardando...' : '✓ Marcar este flujo como listo'}
               </button>
