@@ -246,11 +246,11 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       console.error('Error al generar sugerencias con IA:', error)
       // Fallback local (no persiste, solo muestra)
       const improvementSuggestions = generateImprovementSuggestions(stepsData)
-      setImprovements(improvementSuggestions.map(i => ({...i, id: 'temp-' + Math.random()})))
+      setImprovements(improvementSuggestions.map(i => ({...i, id: crypto.randomUUID()})))
 
       const automationSuggestions = generateAutomationSuggestions(stepsData)
       setAutomations(automationSuggestions.map(a => ({
-         id: 'temp-' + Math.random(),
+         id: crypto.randomUUID(),
          stepId: a.stepId,
          stepName: a.stepName,
          automationType: a.automationType,
@@ -591,7 +591,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                           <p className="text-gray-700">{improvement.description}</p>
                         )}
                         
-                        {improvement.affectedSteps.length > 0 && (
+                        {improvement.affectedSteps?.length > 0 && (
                           <div className="mt-3 text-sm text-gray-500">
                             Pasos afectados: {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
                           </div>

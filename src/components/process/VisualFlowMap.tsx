@@ -87,7 +87,7 @@ export default function VisualFlowMap({
 
   const getStepDeliverables = (stepId: string) => deliverables.filter(d => d.step_id === stepId)
   const getStepAutomations = (stepId: string) => automations.filter(a => a.stepId === stepId)
-  const getStepImprovements = (stepId: string) => improvements.filter(i => i.affectedSteps.includes(stepId))
+  const getStepImprovements = (stepId: string) => improvements.filter(i => i.affectedSteps?.includes(stepId))
 
   const totalDuration = steps.reduce((acc, step) => acc + (step.sla_duration || 0), 0)
   const sortedSteps = useMemo(() => [...steps].sort((a, b) => a.position - b.position), [steps])
