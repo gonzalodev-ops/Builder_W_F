@@ -8,6 +8,7 @@ import PageTransition from '@/components/ui/PageTransition'
 import { supabase } from '@/lib/supabase/client'
 import type { Step, Deliverable } from '@/types/database'
 import { DELIVERABLE_TYPES, DELIVERABLE_RECIPIENTS } from '@/lib/constants/processTypes'
+import { logAppEvent } from '@/lib/analytics/logEvent'
 
 interface DeliverableWithStep extends Deliverable {
   step?: Step
@@ -21,6 +22,8 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
   const [aiLoading, setAiLoading] = useState(false)
   const [showAddForm, setShowAddForm] = useState(false)
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([])
+  const [editingSuggestionId, setEditingSuggestionId] = useState<string | null>(null)
+  const [editedSuggestionValues, setEditedSuggestionValues] = useState<any>(null)
   const [newDeliverable, setNewDeliverable] = useState({
     step_id: '',
     name: '',
@@ -92,6 +95,15 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
         description: '',
       })
       setShowAddForm(false)
+
+      logAppEvent({
+        eventType: 'deliverable_created_manual',
+        processId: params.id,
+        metadata: { 
+          type: newDeliverable.type,
+          recipient: newDeliverable.recipient
+        }
+      })
     } catch (error) {
       console.error('Error al agregar entregable:', error)
       alert('Error al agregar entregable')
@@ -155,7 +167,7 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
       })
 
       if (error) throw error
-      setAiSuggestions(data?.suggestions || [])
+      setAiSuggestions((data?.suggestions || []).map((s: any) => ({ ...s, id: crypto.randomUUID() })))
     } catch (error) {
       console.error('Error al generar sugerencias:', error)
       alert('Error al generar sugerencias con IA')
@@ -164,16 +176,115 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
     }
   }
 
-  const handleAcceptSuggestion = (suggestion: any) => {
-    setNewDeliverable({
-      step_id: suggestion.step_id,
+  const handleAcceptSuggestion = async (suggestion: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('deliverables')
+        .insert([{
+          step_id: suggestion.step_id,
+          name: suggestion.name,
+          type: suggestion.type,
+          recipient: suggestion.recipient,
+          description: suggestion.reason
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const step = steps.find(s => s.id === suggestion.step_id)
+      setDeliverables([...deliverables, { ...data, step }])
+      setAiSuggestions(aiSuggestions.filter(s => s.id !== suggestion.id))
+
+      logAppEvent({
+        eventType: 'deliverable_suggestion_accepted',
+        processId: params.id,
+        metadata: { 
+          recipient: suggestion.recipient,
+          type: suggestion.type
+        }
+      })
+    } catch (error) {
+      console.error('Error al aceptar sugerencia:', error)
+      alert('Error al agregar el entregable')
+    }
+  }
+
+  const handleEditSuggestion = (suggestion: any) => {
+    setEditingSuggestionId(suggestion.id)
+    setEditedSuggestionValues({
       name: suggestion.name,
       type: suggestion.type,
       recipient: suggestion.recipient,
       description: suggestion.reason
     })
-    setShowAddForm(true)
-    setAiSuggestions(aiSuggestions.filter(s => s !== suggestion))
+
+    logAppEvent({
+      eventType: 'deliverable_suggestion_edit_started',
+      processId: params.id,
+      metadata: { suggestion_id: suggestion.id }
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingSuggestionId(null)
+    setEditedSuggestionValues(null)
+    logAppEvent({
+      eventType: 'deliverable_suggestion_edit_cancelled',
+      processId: params.id
+    })
+  }
+
+  const handleSaveEditedSuggestion = async (originalSuggestion: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('deliverables')
+        .insert([{
+          step_id: originalSuggestion.step_id,
+          name: editedSuggestionValues.name,
+          type: editedSuggestionValues.type,
+          recipient: editedSuggestionValues.recipient,
+          description: editedSuggestionValues.description
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      const step = steps.find(s => s.id === originalSuggestion.step_id)
+      setDeliverables([...deliverables, { ...data, step }])
+      setAiSuggestions(aiSuggestions.filter(s => s.id !== originalSuggestion.id))
+      setEditingSuggestionId(null)
+      setEditedSuggestionValues(null)
+
+      // Calculate changes for logs
+      const changes: Record<string, any> = {}
+      if (originalSuggestion.name !== editedSuggestionValues.name) changes.name_changed = true
+      if (originalSuggestion.type !== editedSuggestionValues.type) changes.type_changed = true
+      if (originalSuggestion.recipient !== editedSuggestionValues.recipient) changes.recipient_changed = true
+      if (originalSuggestion.reason !== editedSuggestionValues.description) changes.description_changed = true
+
+      logAppEvent({
+        eventType: 'deliverable_suggestion_edited_and_accepted',
+        processId: params.id,
+        metadata: { 
+          changes,
+          original: {
+            name: originalSuggestion.name,
+            type: originalSuggestion.type,
+            recipient: originalSuggestion.recipient
+          },
+          final: {
+            name: editedSuggestionValues.name,
+            type: editedSuggestionValues.type,
+            recipient: editedSuggestionValues.recipient
+          }
+        }
+      })
+    } catch (error) {
+      console.error('Error al guardar sugerencia editada:', error)
+      alert('Error al guardar el entregable')
+    }
   }
 
   const hasClientDeliverables = deliverables.some(d => d.recipient === 'cliente')
@@ -259,8 +370,77 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
                   <div className="space-y-3">
                     {aiSuggestions.map((suggestion, index) => {
                       const step = steps.find(s => s.id === suggestion.step_id)
+                      const isEditing = editingSuggestionId === suggestion.id
+
+                      if (isEditing) {
+                        return (
+                          <div key={suggestion.id || index} className="bg-white p-4 rounded-lg border border-blue-300 shadow-sm">
+                            <div className="space-y-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Nombre</label>
+                                <input
+                                  type="text"
+                                  value={editedSuggestionValues.name}
+                                  onChange={(e) => setEditedSuggestionValues({ ...editedSuggestionValues, name: e.target.value })}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                />
+                              </div>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Tipo</label>
+                                  <select
+                                    value={editedSuggestionValues.type}
+                                    onChange={(e) => setEditedSuggestionValues({ ...editedSuggestionValues, type: e.target.value })}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                  >
+                                    {DELIVERABLE_TYPES.map(t => (
+                                      <option key={t.value} value={t.value}>{t.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="block text-xs font-medium text-gray-700 mb-1">Destinatario</label>
+                                  <select
+                                    value={editedSuggestionValues.recipient}
+                                    onChange={(e) => setEditedSuggestionValues({ ...editedSuggestionValues, recipient: e.target.value })}
+                                    className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                  >
+                                    {DELIVERABLE_RECIPIENTS.map(r => (
+                                      <option key={r.value} value={r.value}>{r.label}</option>
+                                    ))}
+                                  </select>
+                                </div>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Descripción / Razón</label>
+                                <textarea
+                                  value={editedSuggestionValues.description}
+                                  onChange={(e) => setEditedSuggestionValues({ ...editedSuggestionValues, description: e.target.value })}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                  rows={2}
+                                />
+                              </div>
+                              <div className="flex gap-2 justify-end pt-2">
+                                <button
+                                  onClick={handleCancelEdit}
+                                  className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-100 rounded"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => handleSaveEditedSuggestion(suggestion)}
+                                  className="text-xs px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                                >
+                                  Guardar y Agregar
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      }
+
                       return (
-                        <div key={index} className="bg-white p-4 rounded-lg border border-purple-200">
+                        <div key={suggestion.id || index} className="bg-white p-4 rounded-lg border border-purple-200">
                           <div className="flex justify-between items-start">
                             <div className="flex-1">
                               <div className="font-medium text-gray-900">{suggestion.name}</div>
@@ -281,16 +461,22 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
                                 </span>
                               </div>
                             </div>
-                            <div className="flex gap-2">
+                            <div className="flex flex-col gap-2 ml-4">
                               <button
                                 onClick={() => handleAcceptSuggestion(suggestion)}
-                                className="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+                                className="text-sm px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700 whitespace-nowrap"
                               >
                                 Aceptar
                               </button>
                               <button
-                                onClick={() => setAiSuggestions(aiSuggestions.filter(s => s !== suggestion))}
-                                className="text-sm px-3 py-1 text-gray-600 hover:text-gray-800"
+                                onClick={() => handleEditSuggestion(suggestion)}
+                                className="text-sm px-3 py-1 bg-white border border-purple-300 text-purple-700 rounded hover:bg-purple-50 whitespace-nowrap"
+                              >
+                                Editar
+                              </button>
+                              <button
+                                onClick={() => setAiSuggestions(aiSuggestions.filter(s => s.id !== suggestion.id))}
+                                className="text-sm px-3 py-1 text-gray-400 hover:text-gray-600 whitespace-nowrap"
                               >
                                 Ignorar
                               </button>

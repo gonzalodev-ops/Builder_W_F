@@ -8,6 +8,8 @@ import PageTransition from '@/components/ui/PageTransition'
 import AnimatedButton from '@/components/ui/AnimatedButton'
 import { supabase } from '@/lib/supabase/client'
 import type { KPI, Process } from '@/types/database'
+import { logAppEvent } from '@/lib/analytics/logEvent'
+import { METRIC_TYPES } from '@/lib/constants/processTypes'
 
 // KPIs sugeridos según tipo de proceso
 const SUGGESTED_KPIS: Record<string, Array<{ name: string; description: string; metric_type: string }>> = {
@@ -50,6 +52,8 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
   const [kpis, setKpis] = useState<KPI[]>([])
   const [suggestedKpis, setSuggestedKpis] = useState<Array<{ name: string; description: string; metric_type: string }>>([])
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([])
+  const [editingKpiSuggestionId, setEditingKpiSuggestionId] = useState<string | null>(null)
+  const [editedKpiSuggestionValues, setEditedKpiSuggestionValues] = useState<any>(null)
   const [loading, setLoading] = useState(true)
   const [aiLoading, setAiLoading] = useState(false)
   const [navigating, setNavigating] = useState(false)
@@ -112,6 +116,15 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
 
       setKpis([...kpis, data])
       setSuggestedKpis(suggestedKpis.filter(s => s.name !== suggestion.name))
+
+      logAppEvent({
+        eventType: 'kpi_created_from_list',
+        processId: params.id,
+        metadata: { 
+          name: suggestion.name,
+          metric_type: suggestion.metric_type 
+        }
+      })
     } catch (error) {
       console.error('Error al agregar KPI:', error)
     }
@@ -213,7 +226,7 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
       })
 
       if (error) throw error
-      setAiSuggestions(data?.suggestions || [])
+      setAiSuggestions((data?.suggestions || []).map((s: any) => ({ ...s, id: crypto.randomUUID() })))
     } catch (error) {
       console.error('Error al generar sugerencias:', error)
       alert('Error al generar sugerencias con IA')
@@ -240,9 +253,96 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
       if (error) throw error
 
       setKpis([...kpis, data])
-      setAiSuggestions(aiSuggestions.filter(s => s !== suggestion))
+      setAiSuggestions(aiSuggestions.filter(s => s.id !== suggestion.id))
+
+      logAppEvent({
+        eventType: 'kpi_suggestion_accepted',
+        processId: params.id,
+        metadata: { 
+          name: suggestion.name, 
+          metric_type: suggestion.metric_type,
+          has_target: !!suggestion.example_target
+        }
+      })
     } catch (error) {
       console.error('Error al aceptar sugerencia:', error)
+      alert('Error al agregar KPI')
+    }
+  }
+
+  const handleEditKpiSuggestion = (suggestion: any) => {
+    setEditingKpiSuggestionId(suggestion.id)
+    setEditedKpiSuggestionValues({
+      name: suggestion.name,
+      description: suggestion.description,
+      metric_type: suggestion.metric_type,
+      example_target: suggestion.example_target || ''
+    })
+
+    logAppEvent({
+      eventType: 'kpi_suggestion_edit_started',
+      processId: params.id,
+      metadata: { suggestion_id: suggestion.id }
+    })
+  }
+
+  const handleCancelEditKpi = () => {
+    setEditingKpiSuggestionId(null)
+    setEditedKpiSuggestionValues(null)
+    logAppEvent({
+      eventType: 'kpi_suggestion_edit_cancelled',
+      processId: params.id
+    })
+  }
+
+  const handleSaveEditedKpiSuggestion = async (originalSuggestion: any) => {
+    try {
+      const { data, error } = await supabase
+        .from('kpis')
+        .insert([{
+          process_id: params.id,
+          name: editedKpiSuggestionValues.name,
+          description: editedKpiSuggestionValues.description,
+          metric_type: editedKpiSuggestionValues.metric_type,
+          is_active: false,
+          target_value: editedKpiSuggestionValues.example_target || null,
+        }])
+        .select()
+        .single()
+
+      if (error) throw error
+
+      setKpis([...kpis, data])
+      setAiSuggestions(aiSuggestions.filter(s => s.id !== originalSuggestion.id))
+      setEditingKpiSuggestionId(null)
+      setEditedKpiSuggestionValues(null)
+
+      // Calculate changes
+      const changes: Record<string, any> = {}
+      if (originalSuggestion.name !== editedKpiSuggestionValues.name) changes.name_changed = true
+      if (originalSuggestion.description !== editedKpiSuggestionValues.description) changes.description_changed = true
+      if (originalSuggestion.metric_type !== editedKpiSuggestionValues.metric_type) changes.metric_type_changed = true
+      if (originalSuggestion.example_target !== editedKpiSuggestionValues.example_target) changes.target_changed = true
+
+      logAppEvent({
+        eventType: 'kpi_suggestion_edited_and_accepted',
+        processId: params.id,
+        metadata: {
+          changes,
+          original: {
+            name: originalSuggestion.name,
+            metric_type: originalSuggestion.metric_type,
+            target: originalSuggestion.example_target
+          },
+          final: {
+            name: editedKpiSuggestionValues.name,
+            metric_type: editedKpiSuggestionValues.metric_type,
+            target: editedKpiSuggestionValues.example_target
+          }
+        }
+      })
+    } catch (error) {
+      console.error('Error al guardar KPI editado:', error)
       alert('Error al agregar KPI')
     }
   }
@@ -320,38 +420,113 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
                   <span>KPIs sugeridos por IA ({aiSuggestions.length})</span>
                 </h2>
                 <div className="space-y-3">
-                  {aiSuggestions.map((suggestion, index) => (
-                    <div key={index} className="bg-white rounded-lg p-4 flex justify-between items-start border border-purple-200">
-                      <div className="flex-1">
-                        <h3 className="font-medium text-gray-900">{suggestion.name}</h3>
-                        <p className="text-sm text-gray-600 mt-1">{suggestion.description}</p>
-                        <div className="flex gap-2 mt-2">
-                          <span className="inline-block px-2 py-1 bg-purple-100 rounded text-xs text-purple-700">
-                            {suggestion.metric_type}
-                          </span>
-                          {suggestion.example_target && (
-                            <span className="inline-block px-2 py-1 bg-green-100 rounded text-xs text-green-700">
-                              Meta sugerida: {suggestion.example_target}
+                  {aiSuggestions.map((suggestion, index) => {
+                    const isEditing = editingKpiSuggestionId === suggestion.id
+
+                    if (isEditing) {
+                      return (
+                        <div key={suggestion.id || index} className="bg-white rounded-lg p-4 border border-purple-300 shadow-sm">
+                          <div className="space-y-3">
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Nombre del KPI</label>
+                              <input
+                                type="text"
+                                value={editedKpiSuggestionValues.name}
+                                onChange={(e) => setEditedKpiSuggestionValues({ ...editedKpiSuggestionValues, name: e.target.value })}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-gray-700 mb-1">Descripción</label>
+                              <textarea
+                                value={editedKpiSuggestionValues.description}
+                                onChange={(e) => setEditedKpiSuggestionValues({ ...editedKpiSuggestionValues, description: e.target.value })}
+                                className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                rows={2}
+                              />
+                            </div>
+                            <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Tipo de Métrica</label>
+                                <select
+                                  value={editedKpiSuggestionValues.metric_type}
+                                  onChange={(e) => setEditedKpiSuggestionValues({ ...editedKpiSuggestionValues, metric_type: e.target.value })}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                >
+                                  {METRIC_TYPES.map(t => (
+                                    <option key={t.value} value={t.value}>{t.label}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <label className="block text-xs font-medium text-gray-700 mb-1">Meta Sugerida (Opcional)</label>
+                                <input
+                                  type="text"
+                                  value={editedKpiSuggestionValues.example_target}
+                                  onChange={(e) => setEditedKpiSuggestionValues({ ...editedKpiSuggestionValues, example_target: e.target.value })}
+                                  className="w-full px-2 py-1 border border-gray-300 rounded text-sm"
+                                  placeholder="Ej: < 24h"
+                                />
+                              </div>
+                            </div>
+                            <div className="flex gap-2 justify-end pt-2">
+                              <button
+                                onClick={handleCancelEditKpi}
+                                className="text-xs px-3 py-1 text-gray-600 hover:bg-gray-100 rounded"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => handleSaveEditedKpiSuggestion(suggestion)}
+                                className="text-xs px-3 py-1 bg-purple-600 text-white rounded hover:bg-purple-700"
+                              >
+                                Guardar y Agregar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      )
+                    }
+
+                    return (
+                      <div key={suggestion.id || index} className="bg-white rounded-lg p-4 flex justify-between items-start border border-purple-200">
+                        <div className="flex-1">
+                          <h3 className="font-medium text-gray-900">{suggestion.name}</h3>
+                          <p className="text-sm text-gray-600 mt-1">{suggestion.description}</p>
+                          <div className="flex gap-2 mt-2">
+                            <span className="inline-block px-2 py-1 bg-purple-100 rounded text-xs text-purple-700">
+                              {suggestion.metric_type}
                             </span>
-                          )}
+                            {suggestion.example_target && (
+                              <span className="inline-block px-2 py-1 bg-green-100 rounded text-xs text-green-700">
+                                Meta sugerida: {suggestion.example_target}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex flex-col gap-2 ml-4">
+                          <button
+                            onClick={() => handleAcceptAISuggestion(suggestion)}
+                            className="bg-purple-600 text-white px-4 py-1 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors whitespace-nowrap"
+                          >
+                            Agregar
+                          </button>
+                          <button
+                            onClick={() => handleEditKpiSuggestion(suggestion)}
+                            className="bg-white border border-purple-300 text-purple-700 px-4 py-1 rounded-lg text-sm font-medium hover:bg-purple-50 transition-colors whitespace-nowrap"
+                          >
+                            Editar
+                          </button>
+                          <button
+                            onClick={() => setAiSuggestions(aiSuggestions.filter(s => s.id !== suggestion.id))}
+                            className="text-sm px-3 py-1 text-gray-600 hover:text-gray-800 whitespace-nowrap"
+                          >
+                            Ignorar
+                          </button>
                         </div>
                       </div>
-                      <div className="flex gap-2">
-                        <button
-                          onClick={() => handleAcceptAISuggestion(suggestion)}
-                          className="ml-4 bg-purple-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition-colors"
-                        >
-                          Agregar
-                        </button>
-                        <button
-                          onClick={() => setAiSuggestions(aiSuggestions.filter(s => s !== suggestion))}
-                          className="text-sm px-3 py-2 text-gray-600 hover:text-gray-800"
-                        >
-                          Ignorar
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    )
+                  })}
                 </div>
               </div>
             )}
