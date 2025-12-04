@@ -3,6 +3,7 @@ import type {
   AiProvider,
   AutomationSuggestionAI,
   DeliverableSuggestion,
+  ImprovementSuggestionAI,
   KpiSuggestion,
   ParsedStep,
   ParseSopParams,
@@ -229,7 +230,7 @@ Formato de respuesta:
   async suggestImprovementsAndAutomations(
     params: SuggestImprovementsParams,
   ): Promise<{
-    improvements: AutomationSuggestionAI[]
+    improvements: ImprovementSuggestionAI[]
     automations: AutomationSuggestionAI[]
   }> {
     const prompt = `
@@ -269,7 +270,7 @@ Formato de respuesta:
 `.trim()
 
     const result = await callGemini<{
-      improvements: AutomationSuggestionAI[]
+      improvements: ImprovementSuggestionAI[]
       automations: AutomationSuggestionAI[]
     }>({
       useCase: 'suggest_improvements',

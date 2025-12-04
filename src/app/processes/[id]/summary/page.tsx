@@ -6,25 +6,26 @@ import StageProgressBar from '@/components/StageProgressBar'
 import PageTransition from '@/components/ui/PageTransition'
 import { supabase } from '@/lib/supabase/client'
 import type { Process, Step, Deliverable, KPI, Role } from '@/types/database'
-import { generateImprovementSuggestions, generateAutomationSuggestions } from '@/lib/utils/suggestions'
+import {
+  generateImprovementSuggestions,
+  generateAutomationSuggestions,
+} from '@/lib/utils/suggestions'
+import type {
+  ImprovementSuggestion,
+  AutomationSuggestion,
+} from '@/lib/utils/suggestions'
 import { pdf } from '@react-pdf/renderer'
 import { WorkflowPackagePDF } from '@/components/WorkflowPackagePDF'
 import VisualFlowMap from '@/components/process/VisualFlowMap'
 
-// Extended types to include ID for editing
-interface ImprovementWithId {
+// Extended types to incluir ID para edición, manteniendo compatibilidad
+// con los tipos base usados en WorkflowPackagePDF
+interface ImprovementWithId extends ImprovementSuggestion {
   id?: string
-  type: string
-  description: string
-  affectedSteps: string[]
 }
 
-interface AutomationWithId {
+interface AutomationWithId extends AutomationSuggestion {
   id?: string
-  stepId: string
-  stepName: string
-  automationType: string
-  description: string
 }
 
 export default function SummaryPage({ params }: { params: { id: string } }) {
