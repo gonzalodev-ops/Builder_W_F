@@ -23,10 +23,13 @@ import VisualFlowMap from '@/components/process/VisualFlowMap'
 // con los tipos base usados en WorkflowPackagePDF
 interface ImprovementWithId extends ImprovementSuggestion {
   id?: string
+  title?: string
 }
 
 interface AutomationWithId extends AutomationSuggestion {
   id?: string
+  title?: string
+  priority_level?: 'QUICK_WIN' | 'EFFICIENCY_PROJECT'
 }
 
 export default function SummaryPage({ params }: { params: { id: string } }) {
@@ -41,6 +44,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   const [improvements, setImprovements] = useState<ImprovementWithId[]>([])
   const [automations, setAutomations] = useState<AutomationWithId[]>([])
   const [isGeneratingAi, setIsGeneratingAi] = useState(false)
+  const [healthScore, setHealthScore] = useState<number | null>(null)
+  const [healthSummary, setHealthSummary] = useState<string | null>(null)
   
   // Editing states
   const [editingImprovementId, setEditingImprovementId] = useState<string | null>(null)
@@ -119,7 +124,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           id: i.id,
           type: i.type,
           description: i.description,
-          affectedSteps: i.affected_steps || []
+          affectedSteps: i.affected_steps || [],
+          title: i.title || undefined
         })) || [])
 
         setAutomations(savedAutomations?.map(a => ({
@@ -127,7 +133,9 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           stepId: a.step_id,
           stepName: stepsData?.find(s => s.id === a.step_id)?.name || 'Paso desconocido',
           automationType: a.automation_type,
-          description: a.description
+          description: a.description,
+          title: a.title || undefined,
+          priority_level: a.priority_level || undefined
         })) || [])
       } else if (processData.status === 'listo') {
         // Si el proceso ya está listo y no hay sugerencias, NO llamamos a la IA.
@@ -197,6 +205,14 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if (error) throw error
 
+      // Capturar health score y summary
+      if (data?.health_score !== undefined) {
+        setHealthScore(data.health_score)
+      }
+      if (data?.health_summary) {
+        setHealthSummary(data.health_summary)
+      }
+
       // Preparar datos para inserción
       const newImprovements = (data?.improvements || []).map((imp: any) => ({
         process_id: processData.id,
@@ -222,11 +238,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         
         if (impError) console.error('Error saving improvements', impError)
         else {
-           setImprovements(savedImps.map(i => ({
+           setImprovements(savedImps.map((i, idx) => ({
              id: i.id,
              type: i.type,
              description: i.description,
-             affectedSteps: i.affected_steps || []
+             affectedSteps: i.affected_steps || [],
+             title: data?.improvements?.[idx]?.title || undefined
            })))
         }
       }
@@ -239,12 +256,14 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
         if (autoError) console.error('Error saving automations', autoError)
         else {
-          setAutomations(savedAutos.map(a => ({
+          setAutomations(savedAutos.map((a, idx) => ({
             id: a.id,
             stepId: a.step_id,
             stepName: stepsData.find(s => s.id === a.step_id)?.name || '',
             automationType: a.automation_type,
-            description: a.description
+            description: a.description,
+            title: data?.automations?.[idx]?.title || undefined,
+            priority_level: data?.automations?.[idx]?.priority_level || undefined
           })))
         }
       }
@@ -263,6 +282,10 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
          automationType: a.automationType,
          description: a.description
       })))
+      
+      // Fallback para health score/summary
+      setHealthScore(50)
+      setHealthSummary('No se pudo generar análisis con IA. Mostrando sugerencias básicas.')
     } finally {
       setIsGeneratingAi(false)
     }
@@ -407,6 +430,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           automations={automations}
           rolesMap={rolesMap}
           stepsMap={stepsMap}
+          healthScore={healthScore}
+          healthSummary={healthSummary}
         />
       )
 
@@ -538,181 +563,315 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         )}
 
         <div className="space-y-6">
-          {/* Mejoras del proceso */}
-          <div className="bg-white rounded-lg shadow p-8">
-            <h2 className="text-xl font-semibold mb-4">
-              🔧 Oportunidades de mejora del proceso ({improvements.length})
+          {/* Resumen Ejecutivo de Salud */}
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 rounded-lg shadow-md p-8 border-l-4 border-indigo-600">
+            <h2 className="text-2xl font-bold text-gray-900 mb-4">
+              📊 Resumen Ejecutivo de Salud
             </h2>
             
-            {improvements.length === 0 ? (
-              <p className="text-gray-600">
-                ✅ No se detectaron oportunidades de mejora obvias.
+            <div className="space-y-4">
+              <p className="text-gray-800 leading-relaxed">
+                Hemos analizado el flujo actual de <strong>{steps.length} pasos</strong>. 
+                {healthSummary || 'El proceso cumple su objetivo funcional, pero opera con una carga manual significativa que genera riesgos de error y lentitud.'}
               </p>
-            ) : (
-              <div className="space-y-4">
-                {improvements.map((improvement, index) => (
-                  <div key={improvement.id || index} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">{getImprovementIcon(improvement.type)}</span>
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between mb-2">
-                          <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium uppercase">
-                            {improvement.type}
-                          </span>
-                          <div className="flex gap-2">
-                            {improvement.id && editingImprovementId !== improvement.id && (
-                              <>
-                                <button 
-                                  onClick={() => {
-                                    setEditingImprovementId(improvement.id!)
-                                    setEditImprovementText(improvement.description)
-                                  }}
-                                  className="text-gray-400 hover:text-blue-600"
-                                  title="Editar"
-                                >
-                                  ✏️
-                                </button>
-                                <button 
-                                  onClick={() => handleDeleteImprovement(improvement.id!)}
-                                  className="text-gray-400 hover:text-red-600"
-                                  title="Eliminar"
-                                >
-                                  🗑️
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </div>
+              
+              <div className="flex items-center gap-4 mt-4">
+                <div className="bg-white rounded-lg px-6 py-4 shadow-sm">
+                  <div className="text-sm text-gray-600 mb-1">Puntaje de Fluidez</div>
+                  <div className="text-3xl font-bold text-indigo-600">
+                    {healthScore !== null ? healthScore : '--'}/100
+                  </div>
+                  <div className="text-xs text-gray-500 mt-1">
+                    {healthScore !== null && healthScore >= 75 ? 'Fricción Baja' : healthScore !== null && healthScore >= 50 ? 'Fricción Moderada' : healthScore !== null ? 'Fricción Alta' : 'No calculado'}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
 
-                        {editingImprovementId === improvement.id ? (
-                          <div className="space-y-2">
-                            <textarea
-                              value={editImprovementText}
-                              onChange={(e) => setEditImprovementText(e.target.value)}
-                              className="w-full p-2 border border-gray-300 rounded text-sm"
-                              rows={3}
-                            />
-                            <div className="flex gap-2 justify-end">
-                              <button
-                                onClick={() => setEditingImprovementId(null)}
-                                className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
-                              >
-                                Cancelar
-                              </button>
-                              <button
-                                onClick={() => handleUpdateImprovement(improvement.id!)}
-                                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                              >
-                                Guardar
-                              </button>
-                            </div>
-                          </div>
-                        ) : (
-                          <p className="text-gray-700">{improvement.description}</p>
-                        )}
-                        
-                        {improvement.affectedSteps?.length > 0 && (
-                          <div className="mt-3 text-sm text-gray-500">
-                            Pasos afectados: {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
+          {/* Matriz de Prioridades */}
+          <div className="bg-white rounded-lg shadow p-8">
+            <h2 className="text-2xl font-bold text-gray-900 mb-6">
+              🎯 Matriz de Prioridades (Hoja de Ruta)
+            </h2>
+            <p className="text-gray-600 mb-6">
+              Este diagnóstico clasifica los hallazgos según su impacto inmediato y la naturaleza del obstáculo.
+            </p>
+
+            {/* Victorias Rápidas */}
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-3 h-3 bg-green-500 rounded-full"></div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  VICTORIAS RÁPIDAS (Implementación Inmediata)
+                </h3>
+              </div>
+              <p className="text-sm text-gray-600 mb-4 ml-6">
+                Cambios de bajo esfuerzo técnico que liberan tiempo y reducen errores humanos al instante.
+              </p>
+              
+              {automations.filter(a => a.priority_level === 'QUICK_WIN').length === 0 ? (
+                <p className="text-gray-500 ml-6 italic">No se detectaron victorias rápidas en este momento.</p>
+              ) : (
+                <div className="space-y-4 ml-6">
+                  {automations.filter(a => a.priority_level === 'QUICK_WIN').map((automation, index) => (
+                    <div key={automation.id || index} className="border-l-4 border-green-500 bg-green-50 rounded-r-lg p-6">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-gray-900 text-lg">
+                          {index + 1}. {automation.title || `Automatización en ${automation.stepName}`}
+                        </h4>
+                        {automation.id && editingAutomationId !== automation.id && (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingAutomationId(automation.id!)
+                                setEditAutomationText(automation.description)
+                              }}
+                              className="text-gray-400 hover:text-blue-600"
+                              title="Editar"
+                            >
+                              ✏️
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteAutomation(automation.id!)}
+                              className="text-gray-400 hover:text-red-600"
+                              title="Eliminar"
+                            >
+                              🗑️
+                            </button>
                           </div>
                         )}
                       </div>
+                      
+                      {editingAutomationId === automation.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editAutomationText}
+                            onChange={(e) => setEditAutomationText(e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded text-sm"
+                            rows={6}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingAutomationId(null)}
+                              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleUpdateAutomation(automation.id!)}
+                              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-gray-700 whitespace-pre-line leading-relaxed">
+                          {automation.description}
+                        </div>
+                      )}
                     </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-          {/* Automatización */}
-          <div className="bg-white rounded-lg shadow p-8">
-            <h2 className="text-xl font-semibold mb-4">
-              ⚡ Oportunidades de automatización ({automations.length})
-            </h2>
-            
-            {automations.length === 0 ? (
-              <p className="text-gray-600">
-                No se detectaron pasos automatizables.
-              </p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-gray-200">
-                  <thead className="bg-gray-50">
-                    <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paso</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descripción</th>
-                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody className="bg-white divide-y divide-gray-200">
-                    {automations.map((automation, index) => (
-                      <tr key={automation.id || index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900 align-top w-1/4">
-                          {automation.stepName}
-                        </td>
-                        <td className="px-6 py-4 text-sm align-top w-1/6">
-                          <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
-                            {getAutomationIcon(automation.automationType)} {automation.automationType}
-                          </span>
-                        </td>
-                        <td className="px-6 py-4 text-sm text-gray-600 align-top">
-                          {editingAutomationId === automation.id ? (
-                            <div className="space-y-2">
-                              <textarea
-                                value={editAutomationText}
-                                onChange={(e) => setEditAutomationText(e.target.value)}
-                                className="w-full p-2 border border-gray-300 rounded text-sm"
-                                rows={3}
-                              />
-                              <div className="flex gap-2 justify-end">
-                                <button
-                                  onClick={() => setEditingAutomationId(null)}
-                                  className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
-                                >
-                                  Cancelar
-                                </button>
-                                <button
-                                  onClick={() => handleUpdateAutomation(automation.id!)}
-                                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                                >
-                                  Guardar
-                                </button>
-                              </div>
-                            </div>
-                          ) : (
-                            automation.description
-                          )}
-                        </td>
-                        <td className="px-6 py-4 text-right text-sm align-top w-24">
-                          {automation.id && editingAutomationId !== automation.id && (
-                            <div className="flex justify-end gap-2">
-                              <button 
-                                onClick={() => {
-                                  setEditingAutomationId(automation.id!)
-                                  setEditAutomationText(automation.description)
-                                }}
-                                className="text-gray-400 hover:text-blue-600"
-                                title="Editar"
-                              >
-                                ✏️
-                              </button>
-                              <button 
-                                onClick={() => handleDeleteAutomation(automation.id!)}
-                                className="text-gray-400 hover:text-red-600"
-                                title="Eliminar"
-                              >
-                                🗑️
-                              </button>
-                            </div>
-                          )}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+            {/* Proyectos de Eficiencia */}
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  PROYECTOS DE EFICIENCIA (Inversión Estratégica)
+                </h3>
               </div>
-            )}
+              <p className="text-sm text-gray-600 mb-4 ml-6">
+                Integraciones técnicas para eliminar "puentes manuales" donde se pierden o corrompen datos.
+              </p>
+              
+              {automations.filter(a => a.priority_level === 'EFFICIENCY_PROJECT').length === 0 ? (
+                <p className="text-gray-500 ml-6 italic">No se detectaron proyectos de eficiencia en este momento.</p>
+              ) : (
+                <div className="space-y-4 ml-6">
+                  {automations.filter(a => a.priority_level === 'EFFICIENCY_PROJECT').map((automation, index) => (
+                    <div key={automation.id || index} className="border-l-4 border-yellow-500 bg-yellow-50 rounded-r-lg p-6">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-gray-900 text-lg">
+                          {automations.filter(a => a.priority_level === 'QUICK_WIN').length + index + 1}. {automation.title || `Automatización en ${automation.stepName}`}
+                        </h4>
+                        {automation.id && editingAutomationId !== automation.id && (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingAutomationId(automation.id!)
+                                setEditAutomationText(automation.description)
+                              }}
+                              className="text-gray-400 hover:text-blue-600"
+                              title="Editar"
+                            >
+                              ✏️
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteAutomation(automation.id!)}
+                              className="text-gray-400 hover:text-red-600"
+                              title="Eliminar"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {editingAutomationId === automation.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editAutomationText}
+                            onChange={(e) => setEditAutomationText(e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded text-sm"
+                            rows={6}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingAutomationId(null)}
+                              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleUpdateAutomation(automation.id!)}
+                              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-gray-700 whitespace-pre-line leading-relaxed">
+                          {automation.description}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Atención Requerida */}
+            <div className="mb-8">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                <h3 className="text-xl font-semibold text-gray-900">
+                  ATENCIÓN REQUERIDA (Gestión y Reglas)
+                </h3>
+              </div>
+              <p className="text-sm text-gray-600 mb-4 ml-6">
+                Obstáculos estructurales que requieren decisiones de liderazgo, no tecnología.
+              </p>
+              
+              {improvements.length === 0 ? (
+                <p className="text-gray-500 ml-6 italic">✅ No se detectaron obstáculos estructurales críticos.</p>
+              ) : (
+                <div className="space-y-4 ml-6">
+                  {improvements.map((improvement, index) => (
+                    <div key={improvement.id || index} className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-6">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-gray-900 text-lg">
+                          {automations.length + index + 1}. {improvement.title || `${improvement.type.charAt(0).toUpperCase() + improvement.type.slice(1)}`}
+                        </h4>
+                        {improvement.id && editingImprovementId !== improvement.id && (
+                          <div className="flex gap-2">
+                            <button 
+                              onClick={() => {
+                                setEditingImprovementId(improvement.id!)
+                                setEditImprovementText(improvement.description)
+                              }}
+                              className="text-gray-400 hover:text-blue-600"
+                              title="Editar"
+                            >
+                              ✏️
+                            </button>
+                            <button 
+                              onClick={() => handleDeleteImprovement(improvement.id!)}
+                              className="text-gray-400 hover:text-red-600"
+                              title="Eliminar"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                      
+                      {editingImprovementId === improvement.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editImprovementText}
+                            onChange={(e) => setEditImprovementText(e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded text-sm"
+                            rows={6}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingImprovementId(null)}
+                              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleUpdateImprovement(improvement.id!)}
+                              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-gray-700 whitespace-pre-line leading-relaxed">
+                          {improvement.description}
+                        </div>
+                      )}
+                      
+                      {improvement.affectedSteps && improvement.affectedSteps.length > 0 && (
+                        <div className="mt-3 text-sm text-gray-600">
+                          <strong>Pasos afectados:</strong> {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Conclusión del Análisis */}
+            <div className="mt-8 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-6 border border-gray-200">
+              <h3 className="text-lg font-semibold text-gray-900 mb-3">
+                📋 Conclusión del Análisis
+              </h3>
+              <div className="text-gray-700 space-y-2">
+                <p>
+                  Para llevar este proceso al siguiente nivel, recomendamos una estrategia en dos frentes:
+                </p>
+                <ul className="list-disc list-inside space-y-1 ml-4">
+                  {automations.length > 0 && (
+                    <li>
+                      <strong>Frente Tecnológico:</strong> Ejecutar la automatización de {automations.length} {automations.length === 1 ? 'paso' : 'pasos'} 
+                      {automations.filter(a => a.priority_level === 'QUICK_WIN').length > 0 && 
+                        ` (${automations.filter(a => a.priority_level === 'QUICK_WIN').length} victoria${automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} rápida${automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'})`
+                      } para eliminar la carga manual repetitiva.
+                    </li>
+                  )}
+                  {improvements.length > 0 && (
+                    <li>
+                      <strong>Frente de Gestión:</strong> Resolver {improvements.length} {improvements.length === 1 ? 'obstáculo estructural' : 'obstáculos estructurales'} para eliminar ambigüedad y fricciones.
+                    </li>
+                  )}
+                </ul>
+                {automations.filter(a => a.priority_level === 'QUICK_WIN').length > 0 && (
+                  <p className="mt-3 text-sm text-indigo-700 font-medium">
+                    💡 Siguiente paso sugerido: Comenzar con las {automations.filter(a => a.priority_level === 'QUICK_WIN').length} victoria{automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} rápida{automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} para generar valor inmediato.
+                  </p>
+                )}
+              </div>
+            </div>
           </div>
 
           {/* Workflow Package Preview */}

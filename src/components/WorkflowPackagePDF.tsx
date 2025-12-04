@@ -263,6 +263,8 @@ interface WorkflowPackagePDFProps {
   automations: AutomationSuggestion[]
   rolesMap: Record<string, string>
   stepsMap: Record<string, string>
+  healthScore?: number | null
+  healthSummary?: string | null
 }
 
 export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
@@ -274,6 +276,8 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
   automations,
   rolesMap,
   stepsMap,
+  healthScore,
+  healthSummary,
 }) => {
   const getRoleName = (roleId: string | null) => {
     if (!roleId) return 'Sin asignar'
@@ -433,64 +437,118 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
         </View>
       </Page>
 
-      {/* Página 3: Oportunidades */}
+      {/* Página 3: Diagnóstico de Salud y Matriz de Prioridades */}
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
-          <Text style={styles.title}>Oportunidades identificadas</Text>
+          <Text style={styles.title}>Diagnóstico de Salud Operativa</Text>
           <Text style={styles.subtitle}>{process.name}</Text>
         </View>
 
-        {/* Resumen de oportunidades */}
-        <View style={styles.summaryBox}>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Mejoras del proceso</Text>
-            <Text style={styles.summaryValue}>{improvements.length}</Text>
-          </View>
-          <View style={styles.summaryItem}>
-            <Text style={styles.summaryLabel}>Pasos automatizables</Text>
-            <Text style={styles.summaryValue}>{automations.length}</Text>
+        {/* Resumen Ejecutivo de Salud */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>5. Resumen Ejecutivo de Salud</Text>
+          <View style={styles.infoGrid}>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Pasos analizados:</Text>
+              <Text style={styles.infoValue}>{steps.length}</Text>
+            </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Puntaje de Fluidez:</Text>
+              <Text style={styles.infoValue}>
+                {healthScore !== null && healthScore !== undefined ? `${healthScore}/100` : 'No calculado'}
+              </Text>
+            </View>
+            {healthSummary && (
+              <View style={{ marginTop: 8, padding: 8, backgroundColor: '#f0f9ff', borderRadius: 4 }}>
+                <Text style={{ fontSize: 10, color: '#1f2937', lineHeight: 1.5 }}>
+                  {healthSummary}
+                </Text>
+              </View>
+            )}
           </View>
         </View>
 
-        {/* Oportunidades de mejora */}
+        {/* Matriz de Prioridades */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>5. Oportunidades de mejora del proceso</Text>
-          {improvements.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No se detectaron oportunidades de mejora obvias. El proceso está bien estructurado.
+          <Text style={styles.sectionTitle}>6. Matriz de Prioridades</Text>
+          
+          {/* Victorias Rápidas */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#16a34a', marginBottom: 4 }}>
+              🟢 VICTORIAS RÁPIDAS
             </Text>
-          ) : (
-            improvements.map((improvement, index) => (
-              <View key={index} style={styles.improvementItem}>
-                <Text style={styles.improvementType}>{improvement.type}</Text>
-                <Text style={styles.improvementDesc}>{improvement.description}</Text>
-                {improvement.affectedSteps.length > 0 && (
-                  <Text style={styles.improvementSteps}>
-                    Pasos afectados: {improvement.affectedSteps.map(id => stepsMap[id]).join(', ')}
+            <Text style={{ fontSize: 9, color: '#6b7280', marginBottom: 6 }}>
+              Implementación inmediata - Bajo esfuerzo técnico
+            </Text>
+            {automations.filter(a => (a as any).priority_level === 'QUICK_WIN').length === 0 ? (
+              <Text style={styles.emptyText}>No se detectaron victorias rápidas</Text>
+            ) : (
+              automations.filter(a => (a as any).priority_level === 'QUICK_WIN').map((automation, index) => (
+                <View key={index} style={{ ...styles.improvementItem, borderLeft: '3 solid #16a34a' }}>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#1f2937', marginBottom: 3 }}>
+                    {(automation as any).title || automation.stepName}
                   </Text>
-                )}
-              </View>
-            ))
-          )}
-        </View>
+                  <Text style={{ fontSize: 9, color: '#374151' }}>
+                    {automation.description}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
 
-        {/* Oportunidades de automatización */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>6. Oportunidades de automatización</Text>
-          {automations.length === 0 ? (
-            <Text style={styles.emptyText}>
-              No se detectaron pasos automatizables con las reglas actuales.
+          {/* Proyectos de Eficiencia */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#eab308', marginBottom: 4 }}>
+              🟡 PROYECTOS DE EFICIENCIA
             </Text>
-          ) : (
-            automations.map((automation, index) => (
-              <View key={index} style={styles.automationRow}>
-                <Text style={styles.automationStep}>{automation.stepName}</Text>
-                <Text style={styles.automationType}>{automation.automationType}</Text>
-                <Text style={styles.automationDesc}>{automation.description}</Text>
-              </View>
-            ))
-          )}
+            <Text style={{ fontSize: 9, color: '#6b7280', marginBottom: 6 }}>
+              Inversión estratégica - Integraciones técnicas
+            </Text>
+            {automations.filter(a => (a as any).priority_level === 'EFFICIENCY_PROJECT').length === 0 ? (
+              <Text style={styles.emptyText}>No se detectaron proyectos de eficiencia</Text>
+            ) : (
+              automations.filter(a => (a as any).priority_level === 'EFFICIENCY_PROJECT').map((automation, index) => (
+                <View key={index} style={{ ...styles.improvementItem, borderLeft: '3 solid #eab308' }}>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#1f2937', marginBottom: 3 }}>
+                    {(automation as any).title || automation.stepName}
+                  </Text>
+                  <Text style={{ fontSize: 9, color: '#374151' }}>
+                    {automation.description}
+                  </Text>
+                </View>
+              ))
+            )}
+          </View>
+
+          {/* Atención Requerida */}
+          <View style={{ marginBottom: 12 }}>
+            <Text style={{ fontSize: 11, fontWeight: 'bold', color: '#dc2626', marginBottom: 4 }}>
+              🔴 ATENCIÓN REQUERIDA
+            </Text>
+            <Text style={{ fontSize: 9, color: '#6b7280', marginBottom: 6 }}>
+              Gestión y reglas - Decisiones de liderazgo
+            </Text>
+            {improvements.length === 0 ? (
+              <Text style={styles.emptyText}>No se detectaron obstáculos estructurales críticos</Text>
+            ) : (
+              improvements.map((improvement, index) => (
+                <View key={index} style={{ ...styles.improvementItem, borderLeft: '3 solid #dc2626' }}>
+                  <Text style={{ fontSize: 10, fontWeight: 'bold', color: '#1f2937', marginBottom: 3 }}>
+                    {(improvement as any).title || improvement.type}
+                  </Text>
+                  <Text style={{ fontSize: 9, color: '#374151' }}>
+                    {improvement.description}
+                  </Text>
+                  {improvement.affectedSteps && improvement.affectedSteps.length > 0 && (
+                    <Text style={{ fontSize: 8, color: '#6b7280', marginTop: 4, fontStyle: 'italic' }}>
+                      Pasos afectados: {improvement.affectedSteps.map(id => stepsMap[id]).join(', ')}
+                    </Text>
+                  )}
+                </View>
+              ))
+            )}
+          </View>
         </View>
 
         {/* Footer */}

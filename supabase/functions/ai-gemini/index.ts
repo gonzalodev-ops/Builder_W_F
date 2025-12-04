@@ -228,44 +228,87 @@ async function handleSuggestImprovements(payload: any): Promise<Response> {
   const { processSummary, steps, deliverables, kpis } = payload;
 
   const prompt = `
-Tarea: actuar como un consultor experto en procesos y proponer mejoras de ALTO IMPACTO.
-Analiza el siguiente proceso y busca oportunidades de optimización y automatización.
+ROL:
+Actúa como un Arquitecto de Salud Operativa Senior. Tu mentalidad no es la de un asistente genérico, sino la de un cirujano de procesos: buscas la patología (la causa raíz), la aíslas y prescribes el tratamiento más efectivo.
 
-Contexto del proceso:
+OBJETIVO:
+Analizar el siguiente proceso y generar una Matriz de Diagnóstico Estratégico. Debes identificar dónde el proceso sangra recursos (fricción) y dónde está bloqueado (estructura).
+
+CONTEXTO DEL PROCESO:
 ${JSON.stringify(processSummary, null, 2)}
 
-Pasos (en orden):
+PASOS DEL FLUJO:
 ${JSON.stringify(steps, null, 2)}
 
-Entregables:
+ENTREGABLES ACTUALES:
 ${JSON.stringify(deliverables, null, 2)}
 
-KPIs activos:
+KPIs ACTIVOS:
 ${JSON.stringify(kpis, null, 2)}
 
-Instrucciones:
-1. Identifica entre 1 y 3 MEJORAS CLAVE del proceso (eliminar pasos redundantes, reordenar para eficiencia, clarificar responsabilidades).
-2. Identifica entre 1 y 3 oportunidades de AUTOMATIZACIÓN (notificaciones, generación de docs, integraciones).
-3. Sé ESPECÍFICO y ACCIONABLE. Evita consejos genéricos como "mejorar la comunicación".
-4. Usa un tono profesional y directo.
+---
 
-Formato de respuesta (JSON):
+INSTRUCCIONES DE ANÁLISIS (HEURÍSTICAS):
+
+Analiza cada paso buscando estos "Marcadores de Patología":
+
+1. El Marcador "Puente Humano" (Human Middleware): ¿El humano solo mueve datos del sistema A al B o limpia excels?
+   -> Esto es una INEFICIENCIA TÉCNICA (Automatizable).
+
+2. El Marcador "Policía de Datos" (Trust Gap): ¿El paso es "revisar", "validar" o "supervisar" datos de otro humano?
+   -> Esto es COSTO DE NO-CALIDAD (Automatizable con reglas/IA).
+
+3. El Marcador "Cuello de Botella Político": ¿El paso es "esperar firma", "autorización" o depende de una decisión ambigua?
+   -> Esto es FRICCIÓN ESTRUCTURAL (Requiere cambio de gestión/política).
+
+4. El Marcador "Fatiga": Tareas repetitivas de bajo valor cognitivo (enviar emails, notificar).
+   -> Esto es un QUICK WIN (Automatizable fácil).
+
+---
+
+REGLAS DE TONO (CRÍTICO):
+
+1. Cero Adjetivos Vacíos: No uses "tedioso", "lento", "potente". Describe la mecánica: "introduce latencia asíncrona", "ruptura de contexto", "dependencia manual".
+
+2. Autoridad Clínica: Diagnostica con evidencia. No digas "podría mejorarse", di "este paso genera un riesgo operativo por X".
+
+3. Lenguaje Ejecutivo: Directo, sobrio y estratégico.
+
+---
+
+FORMATO DE RESPUESTA ESPERADO (JSON ESTRICTO):
+
+Debes clasificar tus hallazgos en dos arreglos: "improvements" (para cambios estructurales/gestión) y "automations" (para tecnología).
+
+Genera un JSON con esta estructura exacta:
+
 {
+  "health_score": number, // 0 a 100. (Estimación basada en % de pasos de valor vs pasos de soporte)
+  "health_summary": "string", // Breve diagnóstico ejecutivo de 2-3 líneas sobre el estado general del proceso.
   "improvements": [
     {
-      "type": "simplificar|agregar|reordenar|clarificar",
-      "description": "Acción específica a realizar (ej: 'Eliminar paso de revisión manual ya que existe validación automática')",
+      "type": "clarificar" | "simplificar" | "reordenar" | "eliminar",
+      "title": "string", // Ej: "Clarificación de Criterios de Subsidios"
+      "description": "string", // Diagnóstico estructurado: Dónde ocurre (nombre de pasos), Lo que sucede hoy, Por qué es crítico, Recomendación.
       "affected_step_ids": ["uuid"]
     }
   ],
   "automations": [
     {
       "step_id": "uuid",
-      "automation_type": "notificacion|integracion|documento|archivo|formulario",
-      "description": "Qué automatizar y cómo (ej: 'Enviar notificación Slack al equipo de ventas cuando el estado cambie')"
+      "automation_type": "notificacion" | "integracion" | "documento" | "archivo" | "formulario",
+      "priority_level": "QUICK_WIN" | "EFFICIENCY_PROJECT",
+      "title": "string", // Ej: "Automatización de Notificaciones y Envío de Recibos"
+      "description": "string" // Diagnóstico estructurado: Dónde ocurre, Lo que sucede hoy, Por qué cambiarlo, Recomendación.
     }
   ]
 }
+
+NOTA:
+- Si el hallazgo es un "Quick Win" o "Proyecto de Eficiencia" (Tecnología), ponlo en 'automations'.
+- Si el hallazgo es "Atención Requerida" (Políticas, Burocracia, Personas), ponlo en 'improvements'.
+- Asegura que los IDs de los pasos coincidan exactamente con los provistos.
+- En la descripción, estructura el texto con los subtítulos: "Dónde ocurre:", "Lo que sucede hoy:", "Por qué cambiarlo/Por qué es crítico:", "Recomendación:".
 `.trim();
 
   const result = await callGemini(prompt);
