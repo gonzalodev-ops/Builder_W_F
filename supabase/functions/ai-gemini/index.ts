@@ -160,6 +160,7 @@ ${JSON.stringify(existingDeliverables, null, 2)}
 Reglas para tus sugerencias:
 - Como referencia, propondrás normalmente entre 3 y 10 entregables nuevos en total.
 - NO repitas entregables que ya existen.
+- IMPORTANTE: DEBES incluir entregables para el CLIENTE si el proceso lo implica.
 - Prioriza:
   - Lo que recibe el CLIENTE.
   - Lo que necesitan otras áreas para seguir trabajando.
@@ -227,9 +228,8 @@ async function handleSuggestImprovements(payload: any): Promise<Response> {
   const { processSummary, steps, deliverables, kpis } = payload;
 
   const prompt = `
-Tarea: analizar un proceso y proponer:
-1) POCAS oportunidades de MEJORA DEL PROCESO.
-2) POCAS oportunidades de AUTOMATIZACIÓN.
+Tarea: actuar como un consultor experto en procesos y proponer mejoras de ALTO IMPACTO.
+Analiza el siguiente proceso y busca oportunidades de optimización y automatización.
 
 Contexto del proceso:
 ${JSON.stringify(processSummary, null, 2)}
@@ -243,12 +243,18 @@ ${JSON.stringify(deliverables, null, 2)}
 KPIs activos:
 ${JSON.stringify(kpis, null, 2)}
 
-Formato de respuesta:
+Instrucciones:
+1. Identifica entre 1 y 3 MEJORAS CLAVE del proceso (eliminar pasos redundantes, reordenar para eficiencia, clarificar responsabilidades).
+2. Identifica entre 1 y 3 oportunidades de AUTOMATIZACIÓN (notificaciones, generación de docs, integraciones).
+3. Sé ESPECÍFICO y ACCIONABLE. Evita consejos genéricos como "mejorar la comunicación".
+4. Usa un tono profesional y directo.
+
+Formato de respuesta (JSON):
 {
   "improvements": [
     {
       "type": "simplificar|agregar|reordenar|clarificar",
-      "description": "Descripción breve",
+      "description": "Acción específica a realizar (ej: 'Eliminar paso de revisión manual ya que existe validación automática')",
       "affected_step_ids": ["uuid"]
     }
   ],
@@ -256,7 +262,7 @@ Formato de respuesta:
     {
       "step_id": "uuid",
       "automation_type": "notificacion|integracion|documento|archivo|formulario",
-      "description": "Descripción breve"
+      "description": "Qué automatizar y cómo (ej: 'Enviar notificación Slack al equipo de ventas cuando el estado cambie')"
     }
   ]
 }

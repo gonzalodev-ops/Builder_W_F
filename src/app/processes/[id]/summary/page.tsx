@@ -7,10 +7,25 @@ import PageTransition from '@/components/ui/PageTransition'
 import { supabase } from '@/lib/supabase/client'
 import type { Process, Step, Deliverable, KPI, Role } from '@/types/database'
 import { generateImprovementSuggestions, generateAutomationSuggestions } from '@/lib/utils/suggestions'
-import type { ImprovementSuggestion, AutomationSuggestion } from '@/lib/utils/suggestions'
 import { pdf } from '@react-pdf/renderer'
 import { WorkflowPackagePDF } from '@/components/WorkflowPackagePDF'
 import VisualFlowMap from '@/components/process/VisualFlowMap'
+
+// Extended types to include ID for editing
+interface ImprovementWithId {
+  id?: string
+  type: string
+  description: string
+  affectedSteps: string[]
+}
+
+interface AutomationWithId {
+  id?: string
+  stepId: string
+  stepName: string
+  automationType: string
+  description: string
+}
 
 export default function SummaryPage({ params }: { params: { id: string } }) {
   const router = useRouter()
@@ -21,8 +36,14 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   const [deliverables, setDeliverables] = useState<Deliverable[]>([])
   const [kpis, setKpis] = useState<KPI[]>([])
   const [roles, setRoles] = useState<Role[]>([])
-  const [improvements, setImprovements] = useState<ImprovementSuggestion[]>([])
-  const [automations, setAutomations] = useState<AutomationSuggestion[]>([])
+  const [improvements, setImprovements] = useState<ImprovementWithId[]>([])
+  const [automations, setAutomations] = useState<AutomationWithId[]>([])
+  
+  // Editing states
+  const [editingImprovementId, setEditingImprovementId] = useState<string | null>(null)
+  const [editImprovementText, setEditImprovementText] = useState('')
+  const [editingAutomationId, setEditingAutomationId] = useState<string | null>(null)
+  const [editAutomationText, setEditAutomationText] = useState('')
 
   useEffect(() => {
     fetchData()
@@ -71,9 +92,38 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         .select('*')
       setRoles(rolesData || [])
 
-      // Generar sugerencias con IA
-      if (stepsData && stepsData.length > 0 && processData) {
-        await generateAISuggestions(processData, stepsData, deliverablesData, kpisData || [], rolesData || [])
+      // Cargar Sugerencias Persistentes
+      const { data: savedImprovements } = await supabase
+        .from('improvement_suggestions')
+        .select('*')
+        .eq('process_id', params.id)
+      
+      const { data: savedAutomations } = await supabase
+        .from('automation_suggestions')
+        .select('*')
+        .in('step_id', (stepsData || []).map(s => s.id))
+
+      if ((savedImprovements && savedImprovements.length > 0) || (savedAutomations && savedAutomations.length > 0)) {
+        // Load from DB
+        setImprovements(savedImprovements?.map(i => ({
+          id: i.id,
+          type: i.type,
+          description: i.description,
+          affectedSteps: i.affected_steps || []
+        })) || [])
+
+        setAutomations(savedAutomations?.map(a => ({
+          id: a.id,
+          stepId: a.step_id,
+          stepName: stepsData?.find(s => s.id === a.step_id)?.name || 'Paso desconocido',
+          automationType: a.automation_type,
+          description: a.description
+        })) || [])
+      } else {
+        // Generar sugerencias con IA si no existen
+        if (stepsData && stepsData.length > 0 && processData) {
+          await generateAISuggestions(processData, stepsData, deliverablesData, kpisData || [], rolesData || [])
+        }
       }
     } catch (error) {
       console.error('Error al cargar datos:', error)
@@ -130,30 +180,136 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if (error) throw error
 
-      // Convertir el formato de la IA al formato esperado
-      const improvementsConverted = (data?.improvements || []).map((imp: any) => ({
+      // Preparar datos para inserción
+      const newImprovements = (data?.improvements || []).map((imp: any) => ({
+        process_id: processData.id,
         type: imp.type,
         description: imp.description,
-        affectedSteps: imp.affected_step_ids || []
+        affected_steps: imp.affected_step_ids || [],
+        status: 'pending'
       }))
 
-      const automationsConverted = (data?.automations || []).map((auto: any) => ({
-        stepId: auto.step_id,
-        stepName: stepsData.find(s => s.id === auto.step_id)?.name || '',
-        automationType: auto.automation_type,
-        description: auto.description
+      const newAutomations = (data?.automations || []).map((auto: any) => ({
+        step_id: auto.step_id,
+        automation_type: auto.automation_type,
+        description: auto.description,
+        status: 'pending'
       }))
 
-      setImprovements(improvementsConverted)
-      setAutomations(automationsConverted)
+      // Guardar en DB
+      if (newImprovements.length > 0) {
+        const { data: savedImps, error: impError } = await supabase
+          .from('improvement_suggestions')
+          .insert(newImprovements)
+          .select()
+        
+        if (impError) console.error('Error saving improvements', impError)
+        else {
+           setImprovements(savedImps.map(i => ({
+             id: i.id,
+             type: i.type,
+             description: i.description,
+             affectedSteps: i.affected_steps || []
+           })))
+        }
+      }
+
+      if (newAutomations.length > 0) {
+         const { data: savedAutos, error: autoError } = await supabase
+          .from('automation_suggestions')
+          .insert(newAutomations)
+          .select()
+
+        if (autoError) console.error('Error saving automations', autoError)
+        else {
+          setAutomations(savedAutos.map(a => ({
+            id: a.id,
+            stepId: a.step_id,
+            stepName: stepsData.find(s => s.id === a.step_id)?.name || '',
+            automationType: a.automation_type,
+            description: a.description
+          })))
+        }
+      }
+
     } catch (error) {
       console.error('Error al generar sugerencias con IA:', error)
-      // Fallback a sugerencias locales
+      // Fallback local (no persiste, solo muestra)
       const improvementSuggestions = generateImprovementSuggestions(stepsData)
-      setImprovements(improvementSuggestions)
+      setImprovements(improvementSuggestions.map(i => ({...i, id: 'temp-' + Math.random()})))
 
       const automationSuggestions = generateAutomationSuggestions(stepsData)
-      setAutomations(automationSuggestions)
+      setAutomations(automationSuggestions.map(a => ({
+         id: 'temp-' + Math.random(),
+         stepId: a.stepId,
+         stepName: a.stepName,
+         automationType: a.automationType,
+         description: a.description
+      })))
+    }
+  }
+
+  const handleUpdateImprovement = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('improvement_suggestions')
+        .update({ description: editImprovementText })
+        .eq('id', id)
+
+      if (error) throw error
+
+      setImprovements(prev => prev.map(i => i.id === id ? { ...i, description: editImprovementText } : i))
+      setEditingImprovementId(null)
+    } catch (error) {
+      console.error('Error updating improvement:', error)
+      alert('Error al actualizar la mejora')
+    }
+  }
+
+  const handleDeleteImprovement = async (id: string) => {
+    if(!confirm('¿Eliminar esta sugerencia?')) return
+    try {
+      const { error } = await supabase
+        .from('improvement_suggestions')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      setImprovements(prev => prev.filter(i => i.id !== id))
+    } catch (error) {
+      console.error('Error deleting improvement:', error)
+    }
+  }
+
+  const handleUpdateAutomation = async (id: string) => {
+    try {
+      const { error } = await supabase
+        .from('automation_suggestions')
+        .update({ description: editAutomationText })
+        .eq('id', id)
+
+      if (error) throw error
+
+      setAutomations(prev => prev.map(a => a.id === id ? { ...a, description: editAutomationText } : a))
+      setEditingAutomationId(null)
+    } catch (error) {
+      console.error('Error updating automation:', error)
+      alert('Error al actualizar la automatización')
+    }
+  }
+
+  const handleDeleteAutomation = async (id: string) => {
+    if(!confirm('¿Eliminar esta sugerencia?')) return
+    try {
+      const { error } = await supabase
+        .from('automation_suggestions')
+        .delete()
+        .eq('id', id)
+
+      if (error) throw error
+      setAutomations(prev => prev.filter(a => a.id !== id))
+    } catch (error) {
+      console.error('Error deleting automation:', error)
     }
   }
 
@@ -182,19 +338,11 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
     try {
       setLoading(true)
-
-      // Crear maps de roles y pasos para el PDF
       const rolesMap: Record<string, string> = {}
-      roles.forEach(role => {
-        rolesMap[role.id] = role.name
-      })
-
+      roles.forEach(role => { rolesMap[role.id] = role.name })
       const stepsMap: Record<string, string> = {}
-      steps.forEach(step => {
-        stepsMap[step.id] = step.name
-      })
+      steps.forEach(step => { stepsMap[step.id] = step.name })
 
-      // Generar el PDF
       const doc = (
         <WorkflowPackagePDF
           process={process}
@@ -209,8 +357,6 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       )
 
       const blob = await pdf(doc).toBlob()
-
-      // Crear link de descarga
       const url = URL.createObjectURL(blob)
       const link = document.createElement('a')
       link.href = url
@@ -219,24 +365,16 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
-
-      alert('¡PDF descargado exitosamente! 📄')
     } catch (error) {
       console.error('Error al exportar PDF:', error)
-      alert('Error al generar el PDF. Por favor intenta de nuevo.')
+      alert('Error al generar el PDF.')
     } finally {
       setLoading(false)
     }
   }
 
-  const getStepName = (stepId: string) => {
-    return steps.find(s => s.id === stepId)?.name || 'N/A'
-  }
-
-  const getRoleName = (roleId: string | null) => {
-    if (!roleId) return 'Sin asignar'
-    return roles.find(r => r.id === roleId)?.name || 'N/A'
-  }
+  const getStepName = (stepId: string) => steps.find(s => s.id === stepId)?.name || 'N/A'
+  const getRoleName = (roleId: string | null) => roleId ? (roles.find(r => r.id === roleId)?.name || 'N/A') : 'Sin asignar'
 
   const getImprovementIcon = (type: string) => {
     const icons: Record<string, string> = {
@@ -280,7 +418,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
     <div className="min-h-screen bg-gray-50">
       <StageProgressBar processId={params.id} />
       
-      <PageTransition className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <PageTransition className="max-w-[95%] xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
             <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">Paso 5 de 5</span>
@@ -306,8 +444,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               roles={roles}
               deliverables={deliverables}
               kpis={kpis}
-              improvements={improvements}
-              automations={automations}
+              improvements={improvements as any[]}
+              automations={automations as any[]}
             />
           </div>
         )}
@@ -321,23 +459,73 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
             
             {improvements.length === 0 ? (
               <p className="text-gray-600">
-                ✅ No se detectaron oportunidades de mejora obvias. Tu proceso parece bien estructurado.
+                ✅ No se detectaron oportunidades de mejora obvias.
               </p>
             ) : (
               <div className="space-y-4">
                 {improvements.map((improvement, index) => (
-                  <div key={index} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                  <div key={improvement.id || index} className="border border-gray-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
                     <div className="flex items-start gap-3">
                       <span className="text-2xl">{getImprovementIcon(improvement.type)}</span>
                       <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-2">
+                        <div className="flex items-center justify-between mb-2">
                           <span className="px-2 py-1 bg-blue-100 text-blue-700 rounded text-xs font-medium uppercase">
                             {improvement.type}
                           </span>
+                          <div className="flex gap-2">
+                            {improvement.id && editingImprovementId !== improvement.id && (
+                              <>
+                                <button 
+                                  onClick={() => {
+                                    setEditingImprovementId(improvement.id!)
+                                    setEditImprovementText(improvement.description)
+                                  }}
+                                  className="text-gray-400 hover:text-blue-600"
+                                  title="Editar"
+                                >
+                                  ✏️
+                                </button>
+                                <button 
+                                  onClick={() => handleDeleteImprovement(improvement.id!)}
+                                  className="text-gray-400 hover:text-red-600"
+                                  title="Eliminar"
+                                >
+                                  🗑️
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </div>
-                        <p className="text-gray-700">{improvement.description}</p>
+
+                        {editingImprovementId === improvement.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              value={editImprovementText}
+                              onChange={(e) => setEditImprovementText(e.target.value)}
+                              className="w-full p-2 border border-gray-300 rounded text-sm"
+                              rows={3}
+                            />
+                            <div className="flex gap-2 justify-end">
+                              <button
+                                onClick={() => setEditingImprovementId(null)}
+                                className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                              >
+                                Cancelar
+                              </button>
+                              <button
+                                onClick={() => handleUpdateImprovement(improvement.id!)}
+                                className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                              >
+                                Guardar
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-gray-700">{improvement.description}</p>
+                        )}
+                        
                         {improvement.affectedSteps.length > 0 && (
-                          <div className="mt-2 text-sm text-gray-500">
+                          <div className="mt-3 text-sm text-gray-500">
                             Pasos afectados: {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
                           </div>
                         )}
@@ -357,37 +545,80 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
             
             {automations.length === 0 ? (
               <p className="text-gray-600">
-                No se detectaron pasos automatizables con las reglas actuales. Puedes revisar manualmente cada paso.
+                No se detectaron pasos automatizables.
               </p>
             ) : (
               <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-gray-200">
                   <thead className="bg-gray-50">
                     <tr>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Paso
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Tipo de automatización
-                      </th>
-                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">
-                        Descripción
-                      </th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Paso</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Tipo</th>
+                      <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase">Descripción</th>
+                      <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {automations.map((automation, index) => (
-                      <tr key={index} className="hover:bg-gray-50">
-                        <td className="px-6 py-4 text-sm text-gray-900">
+                      <tr key={automation.id || index} className="hover:bg-gray-50">
+                        <td className="px-6 py-4 text-sm text-gray-900 align-top w-1/4">
                           {automation.stepName}
                         </td>
-                        <td className="px-6 py-4 text-sm">
+                        <td className="px-6 py-4 text-sm align-top w-1/6">
                           <span className="inline-flex items-center gap-1 px-2 py-1 bg-purple-100 text-purple-700 rounded text-xs font-medium">
                             {getAutomationIcon(automation.automationType)} {automation.automationType}
                           </span>
                         </td>
-                        <td className="px-6 py-4 text-sm text-gray-600">
-                          {automation.description}
+                        <td className="px-6 py-4 text-sm text-gray-600 align-top">
+                          {editingAutomationId === automation.id ? (
+                            <div className="space-y-2">
+                              <textarea
+                                value={editAutomationText}
+                                onChange={(e) => setEditAutomationText(e.target.value)}
+                                className="w-full p-2 border border-gray-300 rounded text-sm"
+                                rows={3}
+                              />
+                              <div className="flex gap-2 justify-end">
+                                <button
+                                  onClick={() => setEditingAutomationId(null)}
+                                  className="px-3 py-1 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                                >
+                                  Cancelar
+                                </button>
+                                <button
+                                  onClick={() => handleUpdateAutomation(automation.id!)}
+                                  className="px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                                >
+                                  Guardar
+                                </button>
+                              </div>
+                            </div>
+                          ) : (
+                            automation.description
+                          )}
+                        </td>
+                        <td className="px-6 py-4 text-right text-sm align-top w-24">
+                          {automation.id && editingAutomationId !== automation.id && (
+                            <div className="flex justify-end gap-2">
+                              <button 
+                                onClick={() => {
+                                  setEditingAutomationId(automation.id!)
+                                  setEditAutomationText(automation.description)
+                                }}
+                                className="text-gray-400 hover:text-blue-600"
+                                title="Editar"
+                              >
+                                ✏️
+                              </button>
+                              <button 
+                                onClick={() => handleDeleteAutomation(automation.id!)}
+                                className="text-gray-400 hover:text-red-600"
+                                title="Eliminar"
+                              >
+                                🗑️
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -399,118 +630,52 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
           {/* Workflow Package Preview */}
           <div className="bg-white rounded-lg shadow p-8">
-            <h2 className="text-xl font-semibold mb-6">📦 Resumen del flujo de trabajo (Workflow Package)</h2>
+            <h2 className="text-xl font-semibold mb-6">📦 Resumen del flujo de trabajo</h2>
             
+            <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg text-blue-900 text-sm leading-relaxed">
+              <p>
+                El proceso <strong>{process?.name}</strong> ha sido estructurado en <strong>{steps.length} pasos</strong> con el objetivo de <strong>{process?.objective}</strong>. 
+                {kpis.length > 0 
+                  ? ` Se han establecido ${kpis.length} indicadores clave.` 
+                  : ' No se han definido indicadores clave.'}
+                {improvements.length > 0 && ` Se identificaron ${improvements.length} mejoras y ${automations.length} automatizaciones posibles.`}
+              </p>
+            </div>
+
             <div className="space-y-6 border border-gray-200 rounded-lg p-6 bg-gray-50">
-              {/* Información básica */}
-              <div>
-                <h3 className="font-semibold text-lg mb-3">Información básica</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Nombre:</span>
-                    <p className="font-medium">{process?.name}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Tipo:</span>
-                    <p className="font-medium capitalize">{process?.type}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-600">Objetivo:</span>
-                    <p className="font-medium">{process?.objective}</p>
-                  </div>
-                  <div className="col-span-2">
-                    <span className="text-gray-600">Disparador:</span>
-                    <p className="font-medium">{process?.trigger}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="font-semibold text-lg mb-3">Pasos y responsables ({steps.length})</h3>
-                <div className="space-y-2">
-                  {steps.map((step, index) => (
-                    <div key={step.id} className="flex items-center gap-3 text-sm">
-                      <span className="font-semibold text-gray-500 min-w-[30px]">{index + 1}.</span>
-                      <span className="flex-1">{step.name}</span>
-                      <span className="px-2 py-1 bg-gray-200 rounded text-xs">
-                        👤 {getRoleName(step.role_id)}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="font-semibold text-lg mb-3">Entregables clave ({deliverables.length})</h3>
-                {deliverables.length === 0 ? (
-                  <p className="text-sm text-gray-500">No hay entregables definidos</p>
-                ) : (
-                  <div className="space-y-2">
-                    {deliverables.map((deliverable, index) => (
-                      <div key={deliverable.id} className="flex items-center gap-3 text-sm">
-                        <span className="font-semibold text-gray-500">{index + 1}.</span>
-                        <span className="flex-1">{deliverable.name}</span>
-                        <span className={`px-2 py-1 rounded text-xs ${
-                          deliverable.recipient === 'cliente' ? 'bg-blue-100 text-blue-700' :
-                          deliverable.recipient === 'interno' ? 'bg-green-100 text-green-700' :
-                          'bg-gray-100 text-gray-700'
-                        }`}>
-                          {deliverable.recipient}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="font-semibold text-lg mb-3">KPIs del proceso ({kpis.length})</h3>
-                {kpis.length === 0 ? (
-                  <p className="text-sm text-gray-500">No hay KPIs activos</p>
-                ) : (
-                  <div className="space-y-2">
-                    {kpis.map((kpi, index) => (
-                      <div key={kpi.id} className="flex items-center gap-3 text-sm">
-                        <span className="font-semibold text-gray-500">{index + 1}.</span>
-                        <span className="flex-1">{kpi.name}</span>
-                        {kpi.target_value && (
-                          <span className="px-2 py-1 bg-green-100 text-green-700 rounded text-xs">
-                            🎯 {kpi.target_value}
-                          </span>
-                        )}
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <div className="border-t pt-4">
-                <h3 className="font-semibold text-lg mb-3">Oportunidades identificadas</h3>
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <span className="text-gray-600">Mejoras del proceso:</span>
-                    <p className="font-medium">{improvements.length}</p>
-                  </div>
-                  <div>
-                    <span className="text-gray-600">Pasos automatizables:</span>
-                    <p className="font-medium">{automations.length}</p>
-                  </div>
-                </div>
-              </div>
+               {/* Resumen visual de datos (read-only) */}
+               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                 <div className="bg-white p-4 rounded shadow-sm">
+                   <div className="text-2xl font-bold text-blue-600">{steps.length}</div>
+                   <div className="text-xs text-gray-500 uppercase tracking-wide">Pasos</div>
+                 </div>
+                 <div className="bg-white p-4 rounded shadow-sm">
+                   <div className="text-2xl font-bold text-green-600">{deliverables.length}</div>
+                   <div className="text-xs text-gray-500 uppercase tracking-wide">Entregables</div>
+                 </div>
+                 <div className="bg-white p-4 rounded shadow-sm">
+                   <div className="text-2xl font-bold text-purple-600">{kpis.length}</div>
+                   <div className="text-xs text-gray-500 uppercase tracking-wide">KPIs</div>
+                 </div>
+                 <div className="bg-white p-4 rounded shadow-sm">
+                   <div className="text-2xl font-bold text-orange-600">{roles.filter(r => steps.some(s => s.role_id === r.id)).length}</div>
+                   <div className="text-xs text-gray-500 uppercase tracking-wide">Roles</div>
+                 </div>
+               </div>
             </div>
             
             <div className="flex gap-4 mt-6">
               <button
                 onClick={handleMarkAsReady}
                 disabled={loading}
-                className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed"
+                className="bg-green-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-green-700 transition-colors disabled:bg-gray-400"
               >
                 {loading ? 'Guardando...' : '✓ Marcar este flujo como listo'}
               </button>
               <button
                 onClick={handleExportPDF}
                 disabled={loading}
-                className="border-2 border-blue-500 text-blue-600 px-6 py-3 rounded-lg font-medium hover:bg-blue-50 transition-colors disabled:bg-gray-100 disabled:cursor-not-allowed disabled:border-gray-300 disabled:text-gray-400"
+                className="border-2 border-blue-500 text-blue-600 px-6 py-3 rounded-lg font-medium hover:bg-blue-50 transition-colors disabled:opacity-50"
               >
                 {loading ? 'Generando PDF...' : '📄 Exportar PDF'}
               </button>
@@ -521,4 +686,3 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
     </div>
   )
 }
-

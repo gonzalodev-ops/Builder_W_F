@@ -49,6 +49,7 @@ export interface Step {
   name: string
   description: string | null
   position: number
+  sla_duration: number | null
   created_at: string
   updated_at: string
 }

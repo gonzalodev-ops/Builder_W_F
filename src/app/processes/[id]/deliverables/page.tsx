@@ -164,29 +164,16 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
     }
   }
 
-  const handleAcceptSuggestion = async (suggestion: any) => {
-    try {
-      const { data, error } = await supabase
-        .from('deliverables')
-        .insert([{
-          step_id: suggestion.step_id,
-          name: suggestion.name,
-          type: suggestion.type,
-          recipient: suggestion.recipient,
-          description: suggestion.reason
-        }])
-        .select()
-        .single()
-
-      if (error) throw error
-
-      const step = steps.find(s => s.id === suggestion.step_id)
-      setDeliverables([...deliverables, { ...data, step }])
-      setAiSuggestions(aiSuggestions.filter(s => s !== suggestion))
-    } catch (error) {
-      console.error('Error al aceptar sugerencia:', error)
-      alert('Error al agregar entregable')
-    }
+  const handleAcceptSuggestion = (suggestion: any) => {
+    setNewDeliverable({
+      step_id: suggestion.step_id,
+      name: suggestion.name,
+      type: suggestion.type,
+      recipient: suggestion.recipient,
+      description: suggestion.reason
+    })
+    setShowAddForm(true)
+    setAiSuggestions(aiSuggestions.filter(s => s !== suggestion))
   }
 
   const hasClientDeliverables = deliverables.some(d => d.recipient === 'cliente')
@@ -204,7 +191,7 @@ export default function DeliverablesPage({ params }: { params: { id: string } })
     <div className="min-h-screen bg-gray-50">
       <StageProgressBar processId={params.id} />
       
-      <PageTransition className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <PageTransition className="max-w-[95%] xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">

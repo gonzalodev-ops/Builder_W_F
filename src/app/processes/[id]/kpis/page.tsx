@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import StageProgressBar from '@/components/StageProgressBar'
 import PageTransition from '@/components/ui/PageTransition'
+import AnimatedButton from '@/components/ui/AnimatedButton'
 import { supabase } from '@/lib/supabase/client'
 import type { KPI, Process } from '@/types/database'
 
@@ -51,6 +52,7 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
   const [aiSuggestions, setAiSuggestions] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [aiLoading, setAiLoading] = useState(false)
+  const [navigating, setNavigating] = useState(false)
   const [editingKpi, setEditingKpi] = useState<string | null>(null)
   const [editedTarget, setEditedTarget] = useState('')
 
@@ -261,7 +263,7 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
     <div className="min-h-screen bg-gray-50">
       <StageProgressBar processId={params.id} />
       
-      <PageTransition className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <PageTransition className="max-w-[95%] xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
@@ -536,12 +538,18 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
                     </svg>
                     <span className="font-medium">¡KPIs listos!</span>
                   </div>
-                  <button
-                    onClick={() => router.push(`/processes/${params.id}/summary`)}
-                    className="w-full bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                  <AnimatedButton
+                    onClick={() => {
+                      setNavigating(true)
+                      router.push(`/processes/${params.id}/summary`)
+                    }}
+                    disabled={navigating}
+                    isLoading={navigating}
+                    loadingText="Continuando..."
+                    className="w-full bg-blue-600 text-white hover:bg-blue-700"
                   >
                     Continuar a mejoras y resumen ▶
-                  </button>
+                  </AnimatedButton>
                 </div>
               )}
 

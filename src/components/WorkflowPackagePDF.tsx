@@ -75,6 +75,13 @@ const styles = StyleSheet.create({
     fontSize: 10,
     color: '#1f2937',
   },
+  stepTime: {
+    fontSize: 9,
+    color: '#4b5563',
+    width: 60,
+    textAlign: 'right',
+    marginRight: 10,
+  },
   stepRole: {
     fontSize: 9,
     color: '#4b5563',
@@ -272,6 +279,12 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
               <Text style={styles.infoLabel}>Disparador:</Text>
               <Text style={styles.infoValue}>{process.trigger}</Text>
             </View>
+            <View style={styles.infoRow}>
+              <Text style={styles.infoLabel}>Tiempo Total:</Text>
+              <Text style={styles.infoValue}>
+                {steps.reduce((acc, s) => acc + (s.sla_duration || 0), 0)} min
+              </Text>
+            </View>
           </View>
         </View>
 
@@ -282,6 +295,9 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
             <View key={step.id} style={styles.stepItem}>
               <Text style={styles.stepNumber}>{index + 1}.</Text>
               <Text style={styles.stepName}>{step.name}</Text>
+              <Text style={styles.stepTime}>
+                {step.sla_duration ? `${step.sla_duration} min` : '-'}
+              </Text>
               <Text style={styles.stepRole}>👤 {getRoleName(step.role_id)}</Text>
             </View>
           ))}
