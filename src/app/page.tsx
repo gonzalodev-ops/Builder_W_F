@@ -5,7 +5,7 @@ export default function Home() {
     <main className="flex min-h-screen flex-col items-center justify-center p-24">
       <div className="text-center">
         <h1 className="text-5xl font-bold mb-6">
-          ✨ Chispas
+          ✨ Workflows Builder
         </h1>
         <p className="text-xl mb-8 text-gray-600">
           Transforma tus procesos en flujos de trabajo accionables

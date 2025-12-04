@@ -5,7 +5,7 @@ import './globals.css'
 const inter = Inter({ subsets: ['latin'] })
 
 export const metadata: Metadata = {
-  title: 'Chispas - Herramienta de Workflows',
+  title: 'Workflows Builder',
   description: 'Transforma tus procesos en flujos de trabajo accionables',
 }
 
