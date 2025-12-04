@@ -27,13 +27,13 @@ import {
 import { CSS } from '@dnd-kit/utilities'
 
 // Componente para cada paso arrastrable
-function SortableStepItem({ 
-  step, 
-  index, 
-  isSelected, 
-  onClick, 
-  roleName 
-}: { 
+function SortableStepItem({
+  step,
+  index,
+  isSelected,
+  onClick,
+  roleName
+}: {
   step: Step
   index: number
   isSelected: boolean
@@ -60,11 +60,10 @@ function SortableStepItem({
       ref={setNodeRef}
       style={style}
       onClick={onClick}
-      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${
-        isSelected
+      className={`p-4 border-2 rounded-lg cursor-pointer transition-colors ${isSelected
           ? 'border-blue-500 bg-blue-50'
           : 'border-gray-200 hover:border-gray-300'
-      }`}
+        }`}
     >
       <div className="flex items-start gap-3">
         {/* Icono de drag handle */}
@@ -78,11 +77,11 @@ function SortableStepItem({
             <path d="M7 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 2zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 7 14zm6-8a2 2 0 1 0-.001-4.001A2 2 0 0 0 13 6zm0 2a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 8zm0 6a2 2 0 1 0 .001 4.001A2 2 0 0 0 13 14z" />
           </svg>
         </button>
-        
+
         <span className="font-semibold text-gray-500 min-w-[30px]">
           {index + 1}.
         </span>
-        
+
         <div className="flex-1">
           <h3 className="font-medium text-gray-900">{step.name}</h3>
           <p className="text-sm text-gray-500 mt-1">
@@ -132,12 +131,18 @@ export default function FlowPage({ params }: { params: { id: string } }) {
       if (stepsError) throw stepsError
       setSteps(stepsData || [])
 
-      // Cargar roles predefinidos
+      // Obtener company_id del proceso
+      const { data: processData } = await supabase
+        .from('processes')
+        .select('company_id')
+        .eq('id', params.id)
+        .single()
+
+      // Cargar todos los roles (predefinidos + de la compañía)
       const { data: rolesData, error: rolesError } = await supabase
         .from('roles')
         .select('*')
-        .is('company_id', null)
-        .eq('is_predefined', true)
+        .or(`company_id.is.null,company_id.eq.${processData?.company_id}`)
 
       if (rolesError) throw rolesError
       setRoles(rolesData || [])
@@ -176,19 +181,19 @@ export default function FlowPage({ params }: { params: { id: string } }) {
 
     // Reordenar localmente
     const newSteps = arrayMove(steps, oldIndex, newIndex)
-    
+
     // Actualizar posiciones
     const updatedSteps = newSteps.map((step, index) => ({
       ...step,
       position: index
     }))
-    
+
     setSteps(updatedSteps)
 
     // Guardar en Supabase
     try {
       setSaving(true)
-      
+
       // Actualizar todas las posiciones
       const updates = updatedSteps.map(step => ({
         id: step.id,
@@ -229,7 +234,7 @@ export default function FlowPage({ params }: { params: { id: string } }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <StageProgressBar processId={params.id} />
-      
+
       <PageTransition className="max-w-[95%] xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
@@ -277,7 +282,7 @@ export default function FlowPage({ params }: { params: { id: string } }) {
                   💡 Arrastra para reordenar
                 </p>
               </div>
-              
+
               {/* Diagrama lineal simple */}
               <div className="mb-6 p-4 bg-gray-50 rounded-lg overflow-x-auto">
                 <div className="flex items-center gap-2">
@@ -289,11 +294,10 @@ export default function FlowPage({ params }: { params: { id: string } }) {
                       <div className="text-gray-400">→</div>
                       <button
                         onClick={() => setSelectedStepId(step.id)}
-                        className={`px-3 py-2 rounded text-sm font-medium transition-colors ${
-                          selectedStepId === step.id
+                        className={`px-3 py-2 rounded text-sm font-medium transition-colors ${selectedStepId === step.id
                             ? 'bg-blue-600 text-white'
                             : 'bg-gray-200 hover:bg-gray-300 text-gray-700'
-                        }`}
+                          }`}
                       >
                         {index + 1}
                       </button>
@@ -342,7 +346,7 @@ export default function FlowPage({ params }: { params: { id: string } }) {
             {selectedStep ? (
               <div className="bg-white rounded-lg shadow p-6">
                 <h3 className="font-semibold mb-4">Detalles del paso</h3>
-                
+
                 <div className="space-y-4">
                   <div>
                     <label className="block text-sm font-medium text-gray-700 mb-2">
