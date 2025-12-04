@@ -366,10 +366,18 @@ export default function KPIsPage({ params }: { params: { id: string } }) {
       <PageTransition className="max-w-[95%] xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Header */}
         <div className="mb-8">
-          <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
-            <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">Paso 4 de 5</span>
-            <span>→</span>
-            <span>KPIs</span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm text-gray-600 mb-2">
+              <span className="bg-blue-100 text-blue-700 px-2 py-1 rounded">Paso 4 de 5</span>
+              <span>→</span>
+              <span>KPIs</span>
+            </div>
+            <button
+              onClick={() => router.push('/processes')}
+              className="text-sm text-gray-500 hover:text-gray-700 hover:underline flex items-center gap-1"
+            >
+              ← Volver a procesos
+            </button>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">KPIs del proceso</h1>
           <p className="mt-2 text-gray-600">
