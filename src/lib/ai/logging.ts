@@ -1,19 +1,21 @@
 import { createClient } from '@supabase/supabase-js'
 
 // Cliente de Supabase con Service Role (solo usar en servidor)
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!
-const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
+const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+
+let supabase: any = null
 
 if (!supabaseUrl || !supabaseServiceKey) {
-  console.warn('Faltan variables de entorno para logging de IA (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY). El logging puede fallar.')
+  console.warn('Faltan variables de entorno para logging de IA (NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY). El logging de IA estará deshabilitado.')
+} else {
+  supabase = createClient(supabaseUrl, supabaseServiceKey, {
+    auth: {
+      autoRefreshToken: false,
+      persistSession: false
+    }
+  })
 }
-
-const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-  auth: {
-    autoRefreshToken: false,
-    persistSession: false
-  }
-})
 
 export interface LogAiUsageParams {
   provider: string
@@ -28,6 +30,8 @@ export interface LogAiUsageParams {
 }
 
 export async function logAiUsage(params: LogAiUsageParams) {
+  if (!supabase) return
+
   try {
     const { error } = await supabase
       .from('ai_usage_logs')
