@@ -46,7 +46,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   const [isGeneratingAi, setIsGeneratingAi] = useState(false)
   const [healthScore, setHealthScore] = useState<number | null>(null)
   const [healthSummary, setHealthSummary] = useState<string | null>(null)
-  
+
   // Editing states
   const [editingImprovementId, setEditingImprovementId] = useState<string | null>(null)
   const [editImprovementText, setEditImprovementText] = useState('')
@@ -73,6 +73,10 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         .eq('id', params.id)
         .single()
       setProcess(processData)
+      if (processData) {
+        setHealthScore(processData.health_score)
+        setHealthSummary(processData.health_summary)
+      }
 
       // Cargar pasos
       const { data: stepsData } = await supabase
@@ -112,7 +116,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         .from('improvement_suggestions')
         .select('*')
         .eq('process_id', params.id)
-      
+
       const { data: savedAutomations } = await supabase
         .from('automation_suggestions')
         .select('*')
@@ -213,6 +217,21 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         setHealthSummary(data.health_summary)
       }
 
+      // Guardar métricas de salud en el proceso
+      if (data?.health_score !== undefined || data?.health_summary) {
+        const { error: updateError } = await supabase
+          .from('processes')
+          .update({
+            health_score: data.health_score,
+            health_summary: data.health_summary
+          })
+          .eq('id', processData.id)
+
+        if (updateError) {
+          console.error('Error al guardar métricas de salud:', updateError)
+        }
+      }
+
       // Preparar datos para inserción
       const newImprovements = (data?.improvements || []).map((imp: any) => ({
         process_id: processData.id,
@@ -235,21 +254,21 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           .from('improvement_suggestions')
           .insert(newImprovements)
           .select()
-        
+
         if (impError) console.error('Error saving improvements', impError)
         else {
-           setImprovements(savedImps.map((i, idx) => ({
-             id: i.id,
-             type: i.type,
-             description: i.description,
-             affectedSteps: i.affected_steps || [],
-             title: data?.improvements?.[idx]?.title || undefined
-           })))
+          setImprovements(savedImps.map((i, idx) => ({
+            id: i.id,
+            type: i.type,
+            description: i.description,
+            affectedSteps: i.affected_steps || [],
+            title: data?.improvements?.[idx]?.title || undefined
+          })))
         }
       }
 
       if (newAutomations.length > 0) {
-         const { data: savedAutos, error: autoError } = await supabase
+        const { data: savedAutos, error: autoError } = await supabase
           .from('automation_suggestions')
           .insert(newAutomations)
           .select()
@@ -272,17 +291,17 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       console.error('Error al generar sugerencias con IA:', error)
       // Fallback local (no persiste, solo muestra)
       const improvementSuggestions = generateImprovementSuggestions(stepsData)
-      setImprovements(improvementSuggestions.map(i => ({...i, id: crypto.randomUUID()})))
+      setImprovements(improvementSuggestions.map(i => ({ ...i, id: crypto.randomUUID() })))
 
       const automationSuggestions = generateAutomationSuggestions(stepsData)
       setAutomations(automationSuggestions.map(a => ({
-         id: crypto.randomUUID(),
-         stepId: a.stepId,
-         stepName: a.stepName,
-         automationType: a.automationType,
-         description: a.description
+        id: crypto.randomUUID(),
+        stepId: a.stepId,
+        stepName: a.stepName,
+        automationType: a.automationType,
+        description: a.description
       })))
-      
+
       // Fallback para health score/summary
       setHealthScore(50)
       setHealthSummary('No se pudo generar análisis con IA. Mostrando sugerencias básicas.')
@@ -302,7 +321,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       setImprovements(prev => prev.map(i => i.id === id ? { ...i, description: editImprovementText } : i))
       setEditingImprovementId(null)
-      
+
       logAppEvent({
         eventType: 'improvement_updated',
         processId: params.id,
@@ -315,7 +334,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   }
 
   const handleDeleteImprovement = async (id: string) => {
-    if(!confirm('¿Eliminar esta sugerencia?')) return
+    if (!confirm('¿Eliminar esta sugerencia?')) return
     try {
       const { error } = await supabase
         .from('improvement_suggestions')
@@ -324,7 +343,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if (error) throw error
       setImprovements(prev => prev.filter(i => i.id !== id))
-      
+
       logAppEvent({
         eventType: 'improvement_deleted',
         processId: params.id,
@@ -359,7 +378,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   }
 
   const handleDeleteAutomation = async (id: string) => {
-    if(!confirm('¿Eliminar esta sugerencia?')) return
+    if (!confirm('¿Eliminar esta sugerencia?')) return
     try {
       const { error } = await supabase
         .from('automation_suggestions')
@@ -448,10 +467,10 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       logAppEvent({
         eventType: 'pdf_exported',
         processId: params.id,
-        metadata: { 
+        metadata: {
           step_count: steps.length,
           has_improvements: improvements.length > 0,
-          has_automations: automations.length > 0 
+          has_automations: automations.length > 0
         }
       })
     } catch (error) {
@@ -502,7 +521,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               <p className="text-sm text-gray-600">Generando sugerencias de mejoras y automatizaciones</p>
             </>
           ) : (
-             <>
+            <>
               <div className="flex items-center justify-center gap-3 mb-2">
                 <svg className="animate-spin h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
@@ -521,7 +540,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   return (
     <div className="min-h-screen bg-gray-50">
       <StageProgressBar processId={params.id} />
-      
+
       <PageTransition className="max-w-[95%] xl:max-w-[1800px] mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="mb-8">
           <div className="flex items-center justify-between">
@@ -550,7 +569,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         {/* Visual Flow Map */}
         {process && (
           <div className="mb-8">
-            <VisualFlowMap 
+            <VisualFlowMap
               process={process}
               steps={steps}
               roles={roles}
@@ -568,13 +587,13 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
             <h2 className="text-2xl font-bold text-gray-900 mb-4">
               📊 Resumen Ejecutivo de Salud
             </h2>
-            
+
             <div className="space-y-4">
               <p className="text-gray-800 leading-relaxed">
-                Hemos analizado el flujo actual de <strong>{steps.length} pasos</strong>. 
+                Hemos analizado el flujo actual de <strong>{steps.length} pasos</strong>.
                 {healthSummary || 'El proceso cumple su objetivo funcional, pero opera con una carga manual significativa que genera riesgos de error y lentitud.'}
               </p>
-              
+
               <div className="flex items-center gap-4 mt-4">
                 <div className="bg-white rounded-lg px-6 py-4 shadow-sm">
                   <div className="text-sm text-gray-600 mb-1">Puntaje de Fluidez</div>
@@ -609,7 +628,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               <p className="text-sm text-gray-600 mb-4 ml-6">
                 Cambios de bajo esfuerzo técnico que liberan tiempo y reducen errores humanos al instante.
               </p>
-              
+
               {automations.filter(a => a.priority_level === 'QUICK_WIN').length === 0 ? (
                 <p className="text-gray-500 ml-6 italic">No se detectaron victorias rápidas en este momento.</p>
               ) : (
@@ -622,7 +641,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                         </h4>
                         {automation.id && editingAutomationId !== automation.id && (
                           <div className="flex gap-2">
-                            <button 
+                            <button
                               onClick={() => {
                                 setEditingAutomationId(automation.id!)
                                 setEditAutomationText(automation.description)
@@ -632,7 +651,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                             >
                               ✏️
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDeleteAutomation(automation.id!)}
                               className="text-gray-400 hover:text-red-600"
                               title="Eliminar"
@@ -642,7 +661,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                           </div>
                         )}
                       </div>
-                      
+
                       {editingAutomationId === automation.id ? (
                         <div className="space-y-2">
                           <textarea
@@ -688,7 +707,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               <p className="text-sm text-gray-600 mb-4 ml-6">
                 Integraciones técnicas para eliminar "puentes manuales" donde se pierden o corrompen datos.
               </p>
-              
+
               {automations.filter(a => a.priority_level === 'EFFICIENCY_PROJECT').length === 0 ? (
                 <p className="text-gray-500 ml-6 italic">No se detectaron proyectos de eficiencia en este momento.</p>
               ) : (
@@ -701,7 +720,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                         </h4>
                         {automation.id && editingAutomationId !== automation.id && (
                           <div className="flex gap-2">
-                            <button 
+                            <button
                               onClick={() => {
                                 setEditingAutomationId(automation.id!)
                                 setEditAutomationText(automation.description)
@@ -711,7 +730,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                             >
                               ✏️
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDeleteAutomation(automation.id!)}
                               className="text-gray-400 hover:text-red-600"
                               title="Eliminar"
@@ -721,7 +740,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                           </div>
                         )}
                       </div>
-                      
+
                       {editingAutomationId === automation.id ? (
                         <div className="space-y-2">
                           <textarea
@@ -767,7 +786,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               <p className="text-sm text-gray-600 mb-4 ml-6">
                 Obstáculos estructurales que requieren decisiones de liderazgo, no tecnología.
               </p>
-              
+
               {improvements.length === 0 ? (
                 <p className="text-gray-500 ml-6 italic">✅ No se detectaron obstáculos estructurales críticos.</p>
               ) : (
@@ -780,7 +799,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                         </h4>
                         {improvement.id && editingImprovementId !== improvement.id && (
                           <div className="flex gap-2">
-                            <button 
+                            <button
                               onClick={() => {
                                 setEditingImprovementId(improvement.id!)
                                 setEditImprovementText(improvement.description)
@@ -790,7 +809,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                             >
                               ✏️
                             </button>
-                            <button 
+                            <button
                               onClick={() => handleDeleteImprovement(improvement.id!)}
                               className="text-gray-400 hover:text-red-600"
                               title="Eliminar"
@@ -800,7 +819,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                           </div>
                         )}
                       </div>
-                      
+
                       {editingImprovementId === improvement.id ? (
                         <div className="space-y-2">
                           <textarea
@@ -829,7 +848,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                           {improvement.description}
                         </div>
                       )}
-                      
+
                       {improvement.affectedSteps && improvement.affectedSteps.length > 0 && (
                         <div className="mt-3 text-sm text-gray-600">
                           <strong>Pasos afectados:</strong> {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
@@ -853,8 +872,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                 <ul className="list-disc list-inside space-y-1 ml-4">
                   {automations.length > 0 && (
                     <li>
-                      <strong>Frente Tecnológico:</strong> Ejecutar la automatización de {automations.length} {automations.length === 1 ? 'paso' : 'pasos'} 
-                      {automations.filter(a => a.priority_level === 'QUICK_WIN').length > 0 && 
+                      <strong>Frente Tecnológico:</strong> Ejecutar la automatización de {automations.length} {automations.length === 1 ? 'paso' : 'pasos'}
+                      {automations.filter(a => a.priority_level === 'QUICK_WIN').length > 0 &&
                         ` (${automations.filter(a => a.priority_level === 'QUICK_WIN').length} victoria${automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} rápida${automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'})`
                       } para eliminar la carga manual repetitiva.
                     </li>
@@ -877,46 +896,46 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           {/* Workflow Package Preview */}
           <div className="bg-white rounded-lg shadow p-8">
             <h2 className="text-xl font-semibold mb-6">📦 Resumen del flujo de trabajo</h2>
-            
+
             <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg text-blue-900 text-sm leading-relaxed">
               <p>
-                El proceso <strong>{process?.name}</strong> ha sido estructurado en <strong>{steps.length} pasos</strong> con el objetivo de <strong>{process?.objective}</strong>. 
-                {kpis.length > 0 
-                  ? ` Se han establecido ${kpis.length} indicadores clave.` 
+                El proceso <strong>{process?.name}</strong> ha sido estructurado en <strong>{steps.length} pasos</strong> con el objetivo de <strong>{process?.objective}</strong>.
+                {kpis.length > 0
+                  ? ` Se han establecido ${kpis.length} indicadores clave.`
                   : ' No se han definido indicadores clave.'}
                 {improvements.length > 0 && ` Se identificaron ${improvements.length} mejoras y ${automations.length} automatizaciones posibles.`}
               </p>
             </div>
 
             <div className="space-y-6 border border-gray-200 rounded-lg p-6 bg-gray-50">
-               {/* Resumen visual de datos (read-only) */}
-               <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                 <div className="bg-white p-4 rounded shadow-sm">
-                   <div className="text-2xl font-bold text-blue-600">{steps.length}</div>
-                   <div className="text-xs text-gray-500 uppercase tracking-wide">Pasos</div>
-                 </div>
-                 <div className="bg-white p-4 rounded shadow-sm">
-                   <div className="text-2xl font-bold text-green-600">{deliverables.length}</div>
-                   <div className="text-xs text-gray-500 uppercase tracking-wide">Entregables</div>
-                 </div>
-                 <div className="bg-white p-4 rounded shadow-sm">
-                   <div className="text-2xl font-bold text-purple-600">{kpis.length}</div>
-                   <div className="text-xs text-gray-500 uppercase tracking-wide">KPIs</div>
-                 </div>
-                 <div className="bg-white p-4 rounded shadow-sm">
-                   <div className="text-2xl font-bold text-orange-600">{roles.filter(r => steps.some(s => s.role_id === r.id)).length}</div>
-                   <div className="text-xs text-gray-500 uppercase tracking-wide">Roles</div>
-                 </div>
-               </div>
+              {/* Resumen visual de datos (read-only) */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+                <div className="bg-white p-4 rounded shadow-sm">
+                  <div className="text-2xl font-bold text-blue-600">{steps.length}</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Pasos</div>
+                </div>
+                <div className="bg-white p-4 rounded shadow-sm">
+                  <div className="text-2xl font-bold text-green-600">{deliverables.length}</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Entregables</div>
+                </div>
+                <div className="bg-white p-4 rounded shadow-sm">
+                  <div className="text-2xl font-bold text-purple-600">{kpis.length}</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">KPIs</div>
+                </div>
+                <div className="bg-white p-4 rounded shadow-sm">
+                  <div className="text-2xl font-bold text-orange-600">{roles.filter(r => steps.some(s => s.role_id === r.id)).length}</div>
+                  <div className="text-xs text-gray-500 uppercase tracking-wide">Roles</div>
+                </div>
+              </div>
             </div>
-            
+
             {/* Checklist Final */}
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Checklist final</h3>
               <div className="space-y-3">
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={checklist.improvements}
                     onChange={(e) => setChecklist(prev => ({ ...prev, improvements: e.target.checked }))}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
@@ -924,8 +943,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                   <span className="text-gray-700">He revisado las oportunidades de <strong>mejora del proceso</strong>.</span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={checklist.automations}
                     onChange={(e) => setChecklist(prev => ({ ...prev, automations: e.target.checked }))}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"
@@ -933,8 +952,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                   <span className="text-gray-700">He revisado las oportunidades de automatización.</span>
                 </label>
                 <label className="flex items-center gap-3 cursor-pointer hover:bg-gray-50 p-2 rounded transition-colors">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={checklist.summary}
                     onChange={(e) => setChecklist(prev => ({ ...prev, summary: e.target.checked }))}
                     className="w-5 h-5 text-blue-600 rounded focus:ring-blue-500 border-gray-300"

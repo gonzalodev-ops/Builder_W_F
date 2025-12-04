@@ -1,0 +1,2 @@
+ALTER TABLE processes ADD COLUMN IF NOT EXISTS health_score INTEGER;
+ALTER TABLE processes ADD COLUMN IF NOT EXISTS health_summary TEXT;

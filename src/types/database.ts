@@ -30,6 +30,8 @@ export interface Process {
   trigger: string
   status: ProcessStatus
   capture_method: CaptureMethod | null
+  health_score: number | null
+  health_summary: string | null
   created_at: string
   updated_at: string
 }
