@@ -39,6 +39,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
   const [roles, setRoles] = useState<Role[]>([])
   const [improvements, setImprovements] = useState<ImprovementWithId[]>([])
   const [automations, setAutomations] = useState<AutomationWithId[]>([])
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false)
   
   // Editing states
   const [editingImprovementId, setEditingImprovementId] = useState<string | null>(null)
@@ -120,8 +121,14 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           automationType: a.automation_type,
           description: a.description
         })) || [])
+      } else if (processData.status === 'listo') {
+        // Si el proceso ya está listo y no hay sugerencias, NO llamamos a la IA.
+        // Asumimos que se guardó así intencionalmente o que no se generaron.
+        console.log('Proceso listo sin sugerencias guardadas. Omitiendo análisis IA.')
+        setImprovements([])
+        setAutomations([])
       } else {
-        // Generar sugerencias con IA si no existen
+        // Generar sugerencias con IA si no existen y NO está listo
         if (stepsData && stepsData.length > 0 && processData) {
           await generateAISuggestions(processData, stepsData, deliverablesData, kpisData || [], rolesData || [])
         }
@@ -140,6 +147,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
     kpisData: KPI[],
     rolesData: Role[]
   ) => {
+    setIsGeneratingAi(true)
     try {
       const rolesMap: Record<string, string> = {}
       rolesData.forEach(r => { rolesMap[r.id] = r.name })
@@ -247,6 +255,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
          automationType: a.automationType,
          description: a.description
       })))
+    } finally {
+      setIsGeneratingAi(false)
     }
   }
 
@@ -402,14 +412,29 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="flex items-center justify-center gap-3 mb-2">
-            <svg className="animate-spin h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-            </svg>
-            <span className="text-lg font-medium text-gray-900">🤖 Analizando con IA...</span>
-          </div>
-          <p className="text-sm text-gray-600">Generando sugerencias de mejoras y automatizaciones</p>
+          {isGeneratingAi ? (
+            <>
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <svg className="animate-spin h-6 w-6 text-purple-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span className="text-lg font-medium text-gray-900">🤖 Analizando con IA...</span>
+              </div>
+              <p className="text-sm text-gray-600">Generando sugerencias de mejoras y automatizaciones</p>
+            </>
+          ) : (
+             <>
+              <div className="flex items-center justify-center gap-3 mb-2">
+                <svg className="animate-spin h-6 w-6 text-blue-600" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                </svg>
+                <span className="text-lg font-medium text-gray-900">Cargando resumen del flujo...</span>
+              </div>
+              <p className="text-sm text-gray-600">Recuperando información del proceso</p>
+            </>
+          )}
         </div>
       </div>
     )

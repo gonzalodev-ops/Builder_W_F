@@ -208,6 +208,50 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#1e40af',
   },
+  // Styles for Visual Flow Map Table
+  tableHeader: {
+    flexDirection: 'row',
+    borderBottom: '1 solid #e5e7eb',
+    paddingBottom: 5,
+    marginBottom: 8,
+  },
+  tableHeaderCell: {
+    fontSize: 9,
+    fontWeight: 'bold',
+    color: '#4b5563',
+    textTransform: 'uppercase',
+  },
+  tableRow: {
+    flexDirection: 'row',
+    borderBottom: '1 solid #f3f4f6',
+    paddingVertical: 6,
+    alignItems: 'center',
+  },
+  tableCell: {
+    fontSize: 10,
+    color: '#1f2937',
+  },
+  colId: { width: '8%' },
+  colName: { width: '35%' },
+  colRole: { width: '25%' },
+  colTime: { width: '12%', textAlign: 'right' },
+  colNotes: { width: '20%', paddingLeft: 10 },
+  indicator: {
+    fontSize: 8,
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 2,
+    marginRight: 4,
+    marginBottom: 2,
+  },
+  indicatorAuto: {
+    backgroundColor: '#faf5ff',
+    color: '#7c3aed',
+  },
+  indicatorImp: {
+    backgroundColor: '#fff7ed',
+    color: '#ea580c',
+  },
 })
 
 interface WorkflowPackagePDFProps {
@@ -242,9 +286,24 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
     return styles.badgeGray
   }
 
+  const hasAutomation = (stepId: string) => {
+    return automations.some(a => {
+      // Handle both possible property names depending on where the data comes from
+      return (a.stepId === stepId) || ((a as any).step_id === stepId)
+    })
+  }
+
+  const hasImprovement = (stepId: string) => {
+    return improvements.some(i => {
+       // Handle both possible property names
+       const affected = i.affectedSteps || (i as any).affected_steps || []
+       return affected.includes(stepId)
+    })
+  }
+
   return (
     <Document>
-      {/* Página 1: Información básica y pasos */}
+      {/* Página 1: Información básica */}
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
@@ -288,24 +347,9 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
           </View>
         </View>
 
-        {/* Pasos y responsables */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>2. Pasos y responsables ({steps.length})</Text>
-          {steps.map((step, index) => (
-            <View key={step.id} style={styles.stepItem}>
-              <Text style={styles.stepNumber}>{index + 1}.</Text>
-              <Text style={styles.stepName}>{step.name}</Text>
-              <Text style={styles.stepTime}>
-                {step.sla_duration ? `${step.sla_duration} min` : '-'}
-              </Text>
-              <Text style={styles.stepRole}>👤 {getRoleName(step.role_id)}</Text>
-            </View>
-          ))}
-        </View>
-
         {/* Entregables clave */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>3. Entregables clave ({deliverables.length})</Text>
+          <Text style={styles.sectionTitle}>2. Entregables clave ({deliverables.length})</Text>
           {deliverables.length === 0 ? (
             <Text style={styles.emptyText}>No hay entregables definidos</Text>
           ) : (
@@ -323,7 +367,7 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
 
         {/* KPIs del proceso */}
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>4. KPIs del proceso ({kpis.length})</Text>
+          <Text style={styles.sectionTitle}>3. KPIs del proceso ({kpis.length})</Text>
           {kpis.length === 0 ? (
             <Text style={styles.emptyText}>No hay KPIs activos</Text>
           ) : (
@@ -345,7 +389,51 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
         </View>
       </Page>
 
-      {/* Página 2: Oportunidades */}
+      {/* Página 2: Mapa de Flujo de Valor (Tabla detallada) */}
+      <Page size="A4" style={styles.page}>
+        <View style={styles.header}>
+          <Text style={styles.title}>Mapa de Flujo de Valor</Text>
+          <Text style={styles.subtitle}>Detalle secuencial de pasos y responsables</Text>
+        </View>
+
+        <View style={styles.section}>
+          {/* Table Header */}
+          <View style={styles.tableHeader}>
+            <Text style={[styles.tableHeaderCell, styles.colId]}>#</Text>
+            <Text style={[styles.tableHeaderCell, styles.colName]}>Paso</Text>
+            <Text style={[styles.tableHeaderCell, styles.colRole]}>Rol Responsable</Text>
+            <Text style={[styles.tableHeaderCell, styles.colTime]}>Duración</Text>
+            <Text style={[styles.tableHeaderCell, styles.colNotes]}>Oportunidades</Text>
+          </View>
+
+          {/* Table Rows */}
+          {steps.map((step, index) => (
+             <View key={step.id} style={styles.tableRow}>
+               <Text style={[styles.tableCell, styles.colId]}>{index + 1}</Text>
+               <Text style={[styles.tableCell, styles.colName]}>{step.name}</Text>
+               <Text style={[styles.tableCell, styles.colRole]}>{getRoleName(step.role_id)}</Text>
+               <Text style={[styles.tableCell, styles.colTime]}>
+                 {step.sla_duration ? `${step.sla_duration} min` : '-'}
+               </Text>
+               <View style={[styles.colNotes]}>
+                 {hasAutomation(step.id) && (
+                   <Text style={[styles.indicator, styles.indicatorAuto]}>⚡ Auto</Text>
+                 )}
+                 {hasImprovement(step.id) && (
+                   <Text style={[styles.indicator, styles.indicatorImp]}>🔧 Mejora</Text>
+                 )}
+               </View>
+             </View>
+          ))}
+        </View>
+
+         {/* Footer */}
+         <View style={styles.footer}>
+          <Text>Chispas - Herramienta de diseño de workflows | Página 2</Text>
+        </View>
+      </Page>
+
+      {/* Página 3: Oportunidades */}
       <Page size="A4" style={styles.page}>
         {/* Header */}
         <View style={styles.header}>
@@ -407,10 +495,9 @@ export const WorkflowPackagePDF: React.FC<WorkflowPackagePDFProps> = ({
 
         {/* Footer */}
         <View style={styles.footer}>
-          <Text>Chispas - Herramienta de diseño de workflows | Página 2</Text>
+          <Text>Chispas - Herramienta de diseño de workflows | Página 3</Text>
         </View>
       </Page>
     </Document>
   )
 }
-
