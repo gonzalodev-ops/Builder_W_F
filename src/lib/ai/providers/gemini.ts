@@ -12,6 +12,8 @@ import type {
   SuggestKpisParams,
 } from '../types'
 
+import { logAiUsage } from '../logging'
+
 const MODEL_NAME = 'gemini-1.5-flash'
 
 const SYSTEM_PROMPT = `
@@ -45,39 +47,56 @@ interface CallGeminiOptions<T> {
   useCase: UseCase
   userPrompt: string
   schemaName: string
+  processId?: string
 }
 
-async function callGemini<T>({ userPrompt }: CallGeminiOptions<T>): Promise<T> {
+async function callGemini<T>({ userPrompt, useCase, processId }: CallGeminiOptions<T>): Promise<T> {
   const apiKey = process.env.GEMINI_API_KEY
   if (!apiKey) {
     throw new Error('GEMINI_API_KEY no está configurada')
   }
 
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: MODEL_NAME })
-
   const start = Date.now()
+  let success = false
+  let errorMessage: string | undefined
 
-  const result = await model.generateContent({
-    contents: [
-      { role: 'user', parts: [{ text: SYSTEM_PROMPT }] },
-      { role: 'user', parts: [{ text: userPrompt }] },
-    ],
-    generationConfig: {
-      responseMimeType: 'application/json',
-    },
-  })
+  try {
+    const genAI = new GoogleGenerativeAI(apiKey)
+    const model = genAI.getGenerativeModel({ model: MODEL_NAME })
 
-  const end = Date.now()
+    const result = await model.generateContent({
+      contents: [
+        { role: 'user', parts: [{ text: SYSTEM_PROMPT }] },
+        { role: 'user', parts: [{ text: userPrompt }] },
+      ],
+      generationConfig: {
+        responseMimeType: 'application/json',
+      },
+    })
 
-  const response = await result.response
-  const text = response.text()
+    const response = await result.response
+    const text = response.text()
+    
+    success = true
+    return JSON.parse(text) as T
+  } catch (error: any) {
+    errorMessage = error.message || String(error)
+    throw error
+  } finally {
+    const end = Date.now()
+    const latencyMs = end - start
 
-  // TODO: registrar en ai_usage_logs (en otra capa)
-  const latencyMs = end - start
-  void latencyMs
-
-  return JSON.parse(text) as T
+    // Fire and forget logging
+    logAiUsage({
+      provider: 'gemini',
+      model: MODEL_NAME,
+      useCase,
+      processId,
+      latencyMs,
+      success,
+      errorMessage
+    }).catch(e => console.error('Failed to log AI usage', e))
+  }
 }
 
 export class GeminiAiProvider implements AiProvider {
@@ -126,6 +145,8 @@ Responde EXCLUSIVAMENTE en JSON con este formato EXACTO:
 }
 `.trim()
 
+    // Note: processId not strictly available here usually, unless passed in params (which it isn't in ParseSopParams yet)
+    // If we wanted to track it, we'd need to update ParseSopParams.
     const result = await callGemini<{ steps: ParsedStep[] }>({
       useCase: 'parse_sop',
       userPrompt: prompt,
@@ -181,6 +202,8 @@ Formato de respuesta:
       useCase: 'suggest_deliverables',
       userPrompt: prompt,
       schemaName: 'SuggestDeliverablesResponse',
+      // We don't have processId in params here directly but we can infer it if added to params later.
+      // For now, we skip processId or would need to add it to SuggestDeliverablesParams.
     })
 
     return result.suggestions ?? []

@@ -6,6 +6,7 @@ import StageProgressBar from '@/components/StageProgressBar'
 import PageTransition from '@/components/ui/PageTransition'
 import { supabase } from '@/lib/supabase/client'
 import type { Process, Step, Deliverable, KPI, Role } from '@/types/database'
+import { logAppEvent } from '@/lib/analytics/logEvent'
 import {
   generateImprovementSuggestions,
   generateAutomationSuggestions,
@@ -271,6 +272,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       setImprovements(prev => prev.map(i => i.id === id ? { ...i, description: editImprovementText } : i))
       setEditingImprovementId(null)
+      
+      logAppEvent({
+        eventType: 'improvement_updated',
+        processId: params.id,
+        metadata: { improvement_id: id }
+      })
     } catch (error) {
       console.error('Error updating improvement:', error)
       alert('Error al actualizar la mejora')
@@ -287,6 +294,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if (error) throw error
       setImprovements(prev => prev.filter(i => i.id !== id))
+      
+      logAppEvent({
+        eventType: 'improvement_deleted',
+        processId: params.id,
+        metadata: { improvement_id: id }
+      })
     } catch (error) {
       console.error('Error deleting improvement:', error)
     }
@@ -303,6 +316,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       setAutomations(prev => prev.map(a => a.id === id ? { ...a, description: editAutomationText } : a))
       setEditingAutomationId(null)
+
+      logAppEvent({
+        eventType: 'automation_updated',
+        processId: params.id,
+        metadata: { automation_id: id }
+      })
     } catch (error) {
       console.error('Error updating automation:', error)
       alert('Error al actualizar la automatización')
@@ -319,6 +338,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if (error) throw error
       setAutomations(prev => prev.filter(a => a.id !== id))
+
+      logAppEvent({
+        eventType: 'automation_deleted',
+        processId: params.id,
+        metadata: { automation_id: id }
+      })
     } catch (error) {
       console.error('Error deleting automation:', error)
     }
@@ -333,6 +358,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         .eq('id', params.id)
 
       if (error) throw error
+
+      logAppEvent({
+        eventType: 'process_marked_ready',
+        processId: params.id,
+        metadata: { previous_status: 'borrador' }
+      })
 
       alert('¡Proceso marcado como listo! ✅')
       router.push('/processes')
@@ -376,6 +407,16 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       link.click()
       document.body.removeChild(link)
       URL.revokeObjectURL(url)
+
+      logAppEvent({
+        eventType: 'pdf_exported',
+        processId: params.id,
+        metadata: { 
+          step_count: steps.length,
+          has_improvements: improvements.length > 0,
+          has_automations: automations.length > 0 
+        }
+      })
     } catch (error) {
       console.error('Error al exportar PDF:', error)
       alert('Error al generar el PDF.')
