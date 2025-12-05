@@ -222,6 +222,12 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if (error) throw error
 
+      console.log('🤖 Respuesta completa de la IA:', data)
+      console.log('🤖 Health Score recibido:', data?.health_score)
+      console.log('🤖 Health Summary recibido:', data?.health_summary)
+      console.log('🤖 Improvements recibidos:', data?.improvements?.length)
+      console.log('🤖 Automations recibidos:', data?.automations?.length)
+
       // Capturar health score y summary
       if (data?.health_score !== undefined) {
         setHealthScore(data.health_score)
