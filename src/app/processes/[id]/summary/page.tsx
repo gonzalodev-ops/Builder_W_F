@@ -252,6 +252,9 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       }
 
       // Preparar datos para inserción con validación
+      console.log('🔍 RAW improvements:', data?.improvements)
+      console.log('🔍 RAW automations:', data?.automations)
+
       const newImprovements = (data?.improvements || [])
         .filter((imp: any) => imp.title && imp.description && imp.type)
         .map((imp: any) => ({
