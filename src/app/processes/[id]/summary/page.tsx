@@ -154,15 +154,23 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           title: a.title,
           priority_level: a.priority_level
         })))
-      } else if (processData.status === 'listo') {
-        // Si el proceso ya está listo y no hay sugerencias, NO llamamos a la IA.
-        // Asumimos que se guardó así intencionalmente o que no se generaron.
-        console.log('Proceso listo sin sugerencias guardadas. Omitiendo análisis IA.')
-        setImprovements([])
-        setAutomations([])
+
+        // Calcular Health Score si no existe en el proceso
+        if (processData.health_score === null) {
+          const calculatedScore = Math.max(
+            20,
+            100 - ((savedImprovements?.length || 0) * 10 + (savedAutomations?.length || 0) * 5)
+          )
+          console.log('🏥 Calculando Health Score fallback:', calculatedScore)
+          setHealthScore(calculatedScore)
+        }
       } else {
-        // Generar sugerencias con IA si no existen y NO está listo
-        if (stepsData && stepsData.length > 0 && processData) {
+        // Generar sugerencias con IA si no existen y (NO está listo O está listo pero sin health score)
+        // Esto permite "auto-reparar" procesos listos que se quedaron sin data por errores previos.
+        const shouldGenerate = processData.status !== 'listo' || processData.health_score === null
+
+        if (stepsData && stepsData.length > 0 && processData && shouldGenerate) {
+          console.log('🔄 Iniciando generación automática de análisis (Auto-healing)...')
           await generateAISuggestions(processData, stepsData, deliverablesData, kpisData || [], rolesData || [])
         }
       }
@@ -170,6 +178,31 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       console.error('Error al cargar datos:', error)
     } finally {
       setDataLoading(false)
+    }
+  }
+
+  const handleRegenerateAnalysis = async () => {
+    if (!process || !steps.length) return
+    if (!confirm('Esto regenerará el análisis de Salud y la Matriz de Prioridades con la IA. ¿Continuar?')) return
+
+    try {
+      setLoading(true)
+      // Recargar datos frescos para asegurar contexto
+      const { data: deliverablesData } = await supabase.from('deliverables').select('*').in('step_id', steps.map(s => s.id))
+      const { data: kpisData } = await supabase.from('kpis').select('*').eq('process_id', params.id).eq('is_active', true)
+
+      await generateAISuggestions(
+        process,
+        steps,
+        deliverablesData || [],
+        kpisData || [],
+        roles
+      )
+    } catch (err) {
+      console.error('Error regenerando análisis:', err)
+      alert('Error al regenerar el análisis.')
+    } finally {
+      setLoading(false)
     }
   }
 
@@ -228,13 +261,18 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       console.log('🤖 Improvements recibidos:', data?.improvements?.length)
       console.log('🤖 Automations recibidos:', data?.automations?.length)
 
-      // Capturar health score y summary
-      if (data?.health_score !== undefined) {
-        setHealthScore(data.health_score)
-      }
-      if (data?.health_summary) {
-        setHealthSummary(data.health_summary)
-      }
+      // Capturar health score y summary (con fallback calculado)
+      const calculatedHealthScore = data?.health_score ?? Math.max(
+        20,
+        100 - ((data?.improvements?.length || 0) * 10 + (data?.automations?.length || 0) * 5)
+      )
+      const calculatedHealthSummary = data?.health_summary ||
+        'El proceso cumple su objetivo funcional, pero opera con una carga manual significativa que genera riesgos de error y lentitud.'
+
+      setHealthScore(calculatedHealthScore)
+      setHealthSummary(calculatedHealthSummary)
+
+      console.log('✅ Health Score final:', calculatedHealthScore)
 
       // Guardar métricas de salud en el proceso
       if (data?.health_score !== undefined || data?.health_summary) {
@@ -581,12 +619,22 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               <span>→</span>
               <span>Mejoras, Automatización y Resumen</span>
             </div>
-            <button
-              onClick={() => router.push('/processes')}
-              className="text-sm text-gray-500 hover:text-gray-700 hover:underline flex items-center gap-1"
-            >
-              ← Volver a procesos
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={handleRegenerateAnalysis}
+                disabled={isGeneratingAi || loading}
+                className="px-3 py-1.5 text-sm bg-white border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 flex items-center gap-2 disabled:opacity-50"
+              >
+                <span>🔄</span>
+                {isGeneratingAi ? 'Analizando...' : 'Regenerar Análisis'}
+              </button>
+              <button
+                onClick={() => router.push('/processes')}
+                className="text-sm text-gray-500 hover:text-gray-700 hover:underline flex items-center gap-1"
+              >
+                ← Volver a procesos
+              </button>
+            </div>
           </div>
           <h1 className="text-3xl font-bold text-gray-900">Mejoras, Automatización y Resumen</h1>
           <p className="mt-2 text-gray-600">
@@ -740,11 +788,11 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                 Integraciones técnicas para eliminar "puentes manuales" donde se pierden o corrompen datos.
               </p>
 
-              {automations.filter(a => a.priority_level === 'EFFICIENCY_PROJECT').length === 0 ? (
+              {automations.filter(a => !a.priority_level || a.priority_level === 'EFFICIENCY_PROJECT').length === 0 ? (
                 <p className="text-gray-500 ml-6 italic">No se detectaron proyectos de eficiencia en este momento.</p>
               ) : (
                 <div className="space-y-4 ml-6">
-                  {automations.filter(a => a.priority_level === 'EFFICIENCY_PROJECT').map((automation, index) => (
+                  {automations.filter(a => !a.priority_level || a.priority_level === 'EFFICIENCY_PROJECT').map((automation, index) => (
                     <div key={automation.id || index} className="border-l-4 border-yellow-500 bg-yellow-50 rounded-r-lg p-6">
                       <div className="flex items-start justify-between mb-3">
                         <h4 className="font-semibold text-gray-900 text-lg">
@@ -815,32 +863,76 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                   ATENCIÓN REQUERIDA (Gestión y Reglas)
                 </h3>
               </div>
-              <div className="text-gray-700 space-y-2">
-                <p>
-                  Para llevar este proceso al siguiente nivel, recomendamos una estrategia en dos frentes:
-                </p>
-                <ul className="list-disc list-inside space-y-1 ml-4">
-                  {automations.length > 0 && (
-                    <li>
-                      <strong>Frente Tecnológico:</strong> Ejecutar la automatización de {automations.length} {automations.length === 1 ? 'paso' : 'pasos'}
-                      {automations.filter(a => a.priority_level === 'QUICK_WIN').length > 0 &&
-                        ` (${automations.filter(a => a.priority_level === 'QUICK_WIN').length} victoria${automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} rápida${automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'})`
-                      } para eliminar la carga manual repetitiva.
-                    </li>
-                  )}
-                  {improvements.length > 0 && (
-                    <li>
-                      <strong>Frente de Gestión:</strong> Resolver {improvements.length} {improvements.length === 1 ? 'obstáculo estructural' : 'obstáculos estructurales'} para eliminar ambigüedad y fricciones.
-                    </li>
-                  )}
-                </ul>
-                {automations.filter(a => a.priority_level === 'QUICK_WIN').length > 0 && (
-                  <p className="mt-3 text-sm text-indigo-700 font-medium">
-                    💡 Siguiente paso sugerido: Comenzar con las {automations.filter(a => a.priority_level === 'QUICK_WIN').length} victoria{automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} rápida{automations.filter(a => a.priority_level === 'QUICK_WIN').length === 1 ? '' : 's'} para generar valor inmediato.
-                  </p>
-                )}
-              </div>
-            </div >
+              <p className="text-sm text-gray-600 mb-4 ml-6">
+                Obstáculos estructurales que requieren intervención manual o cambios en el proceso.
+              </p>
+
+              {improvements.length === 0 ? (
+                <p className="text-gray-500 ml-6 italic">No se detectaron puntos de atención requerida.</p>
+              ) : (
+                <div className="space-y-4 ml-6">
+                  {improvements.map((improvement, index) => (
+                    <div key={improvement.id || index} className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-6">
+                      <div className="flex items-start justify-between mb-3">
+                        <h4 className="font-semibold text-gray-900 text-lg">
+                          {index + 1}. {improvement.title || `Mejora: ${improvement.type}`}
+                        </h4>
+                        {improvement.id && editingImprovementId !== improvement.id && (
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => {
+                                setEditingImprovementId(improvement.id!)
+                                setEditImprovementText(improvement.description)
+                              }}
+                              className="text-gray-400 hover:text-blue-600"
+                              title="Editar"
+                            >
+                              ✏️
+                            </button>
+                            <button
+                              onClick={() => handleDeleteImprovement(improvement.id!)}
+                              className="text-gray-400 hover:text-red-600"
+                              title="Eliminar"
+                            >
+                              🗑️
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {editingImprovementId === improvement.id ? (
+                        <div className="space-y-2">
+                          <textarea
+                            value={editImprovementText}
+                            onChange={(e) => setEditImprovementText(e.target.value)}
+                            className="w-full p-3 border border-gray-300 rounded text-sm"
+                            rows={6}
+                          />
+                          <div className="flex gap-2 justify-end">
+                            <button
+                              onClick={() => setEditingImprovementId(null)}
+                              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+                            >
+                              Cancelar
+                            </button>
+                            <button
+                              onClick={() => handleUpdateImprovement(improvement.id!)}
+                              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+                            >
+                              Guardar
+                            </button>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-gray-700 whitespace-pre-line leading-relaxed">
+                          {improvement.description}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
           </div >
 
           {/* Workflow Package Preview */}
