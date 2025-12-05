@@ -39,7 +39,7 @@ async function callGemini(userPrompt: string) {
   if (!apiKey) throw new Error("GEMINI_API_KEY not set");
 
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_NAME}:generateContent?key=${apiKey}`;
-  
+
   const response = await fetch(url, {
     method: "POST",
     headers: {
@@ -75,7 +75,7 @@ async function callGemini(userPrompt: string) {
 
   const data = await response.json();
   const text = data.candidates[0].content.parts[0].text;
-  
+
   return JSON.parse(text);
 }
 
@@ -309,6 +309,11 @@ NOTA:
 - Si el hallazgo es "Atención Requerida" (Políticas, Burocracia, Personas), ponlo en 'improvements'.
 - Asegura que los IDs de los pasos coincidan exactamente con los provistos.
 - En la descripción, estructura el texto con los subtítulos: "Dónde ocurre:", "Lo que sucede hoy:", "Por qué cambiarlo/Por qué es crítico:", "Recomendación:".
+
+IMPORTANTE SOBRE CATEGORIZACIÓN:
+- Para "Victorias Rápidas" (Quick Wins): Busca agresivamente tareas manuales simples (enviar correos, mover archivos, avisar por chat). Son fáciles de automatizar y dan valor inmediato. NO las subestimes.
+- Intenta encontrar al menos 1 o 2 "Victorias Rápidas" si el proceso tiene tareas manuales repetitivas.
+- Equilibra los hallazgos: No todo es un "Proyecto de Eficiencia" complejo.
 `.trim();
 
   const result = await callGemini(prompt);
@@ -361,8 +366,8 @@ Deno.serve(async (req) => {
   } catch (err) {
     console.error("[ai-gemini] error", err);
     const errorMessage = err instanceof Error ? err.message : String(err);
-    return json({ 
-      error: "Error interno en ai-gemini", 
+    return json({
+      error: "Error interno en ai-gemini",
       details: errorMessage,
       stack: err instanceof Error ? err.stack : undefined
     }, 500);
