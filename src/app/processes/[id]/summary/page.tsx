@@ -74,6 +74,8 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         .single()
       setProcess(processData)
       if (processData) {
+        console.log('🏥 Health Score desde DB:', processData.health_score)
+        console.log('🏥 Health Summary desde DB:', processData.health_summary)
         setHealthScore(processData.health_score)
         setHealthSummary(processData.health_summary)
       }
@@ -124,6 +126,10 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
 
       if ((savedImprovements && savedImprovements.length > 0) || (savedAutomations && savedAutomations.length > 0)) {
         // Load from DB
+        console.log('📊 Datos cargados de la DB:')
+        console.log('  - Improvements:', savedImprovements)
+        console.log('  - Automations:', savedAutomations)
+
         setImprovements(savedImprovements?.map(i => ({
           id: i.id,
           type: i.type,
@@ -141,6 +147,13 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
           title: a.title || undefined,
           priority_level: a.priority_level || undefined
         })) || [])
+
+        console.log('📊 Automations procesadas con priority_level:')
+        console.log(savedAutomations?.map(a => ({
+          id: a.id,
+          title: a.title,
+          priority_level: a.priority_level
+        })))
       } else if (processData.status === 'listo') {
         // Si el proceso ya está listo y no hay sugerencias, NO llamamos a la IA.
         // Asumimos que se guardó así intencionalmente o que no se generaron.
