@@ -251,24 +251,37 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
         }
       }
 
-      // Preparar datos para inserción
-      const newImprovements = (data?.improvements || []).map((imp: any) => ({
-        process_id: processData.id,
-        type: imp.type,
-        title: imp.title || null,
-        description: imp.description,
-        affected_steps: imp.affected_step_ids || [],
-        status: 'pending'
-      }))
+      // Preparar datos para inserción con validación
+      const newImprovements = (data?.improvements || [])
+        .filter((imp: any) => imp.title && imp.description && imp.type)
+        .map((imp: any) => ({
+          process_id: processData.id,
+          type: imp.type,
+          title: imp.title,
+          description: imp.description,
+          affected_steps: imp.affected_step_ids || [],
+          status: 'pending'
+        }))
 
-      const newAutomations = (data?.automations || []).map((auto: any) => ({
-        step_id: auto.step_id,
-        automation_type: auto.automation_type,
-        title: auto.title || null,
-        description: auto.description,
-        priority_level: auto.priority_level || null,
-        status: 'pending'
-      }))
+      const newAutomations = (data?.automations || [])
+        .filter((auto: any) =>
+          auto.title &&
+          auto.description &&
+          auto.automation_type &&
+          auto.priority_level &&
+          ['QUICK_WIN', 'EFFICIENCY_PROJECT'].includes(auto.priority_level)
+        )
+        .map((auto: any) => ({
+          step_id: auto.step_id,
+          automation_type: auto.automation_type,
+          title: auto.title,
+          description: auto.description,
+          priority_level: auto.priority_level,
+          status: 'pending'
+        }))
+
+      console.log('✅ Improvements válidos para guardar:', newImprovements.length)
+      console.log('✅ Automations válidos para guardar:', newAutomations.length)
 
       // Guardar en DB
       if (newImprovements.length > 0) {
