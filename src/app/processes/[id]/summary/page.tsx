@@ -256,30 +256,24 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       console.log('🔍 RAW automations:', data?.automations)
 
       const newImprovements = (data?.improvements || [])
-        .filter((imp: any) => imp.title && imp.description && imp.type)
+        .filter((imp: any) => imp.description && imp.type)
         .map((imp: any) => ({
           process_id: processData.id,
           type: imp.type,
-          title: imp.title,
+          title: imp.title || `Mejora: ${imp.type}`,
           description: imp.description,
           affected_steps: imp.affected_step_ids || [],
           status: 'pending'
         }))
 
       const newAutomations = (data?.automations || [])
-        .filter((auto: any) =>
-          auto.title &&
-          auto.description &&
-          auto.automation_type &&
-          auto.priority_level &&
-          ['QUICK_WIN', 'EFFICIENCY_PROJECT'].includes(auto.priority_level)
-        )
+        .filter((auto: any) => auto.description && auto.automation_type)
         .map((auto: any) => ({
           step_id: auto.step_id,
           automation_type: auto.automation_type,
-          title: auto.title,
+          title: auto.title || `Automatización: ${auto.automation_type}`,
           description: auto.description,
-          priority_level: auto.priority_level,
+          priority_level: auto.priority_level || 'EFFICIENCY_PROJECT',
           status: 'pending'
         }))
 
