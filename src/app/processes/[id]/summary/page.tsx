@@ -236,6 +236,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       const newImprovements = (data?.improvements || []).map((imp: any) => ({
         process_id: processData.id,
         type: imp.type,
+        title: imp.title || null,
         description: imp.description,
         affected_steps: imp.affected_step_ids || [],
         status: 'pending'
@@ -244,7 +245,9 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
       const newAutomations = (data?.automations || []).map((auto: any) => ({
         step_id: auto.step_id,
         automation_type: auto.automation_type,
+        title: auto.title || null,
         description: auto.description,
+        priority_level: auto.priority_level || null,
         status: 'pending'
       }))
 
@@ -788,80 +791,66 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               </p>
 
               {improvements.length === 0 ? (
-                <p className="text-gray-500 ml-6 italic">✅ No se detectaron obstáculos estructurales críticos.</p>
-              ) : (
-                <div className="space-y-4 ml-6">
-                  {improvements.map((improvement, index) => (
-                    <div key={improvement.id || index} className="border-l-4 border-red-500 bg-red-50 rounded-r-lg p-6">
-                      <div className="flex items-start justify-between mb-3">
-                        <h4 className="font-semibold text-gray-900 text-lg">
-                          {automations.length + index + 1}. {improvement.title || `${improvement.type.charAt(0).toUpperCase() + improvement.type.slice(1)}`}
-                        </h4>
-                        {improvement.id && editingImprovementId !== improvement.id && (
-                          <div className="flex gap-2">
-                            <button
-                              onClick={() => {
-                                setEditingImprovementId(improvement.id!)
-                                setEditImprovementText(improvement.description)
                               }}
-                              className="text-gray-400 hover:text-blue-600"
-                              title="Editar"
+              className="text-gray-400 hover:text-blue-600"
+              title="Editar"
                             >
-                              ✏️
-                            </button>
-                            <button
-                              onClick={() => handleDeleteImprovement(improvement.id!)}
-                              className="text-gray-400 hover:text-red-600"
-                              title="Eliminar"
-                            >
-                              🗑️
-                            </button>
-                          </div>
+              ✏️
+            </button>
+            <button
+              onClick={() => handleDeleteImprovement(improvement.id!)}
+              className="text-gray-400 hover:text-red-600"
+              title="Eliminar"
+            >
+              🗑️
+            </button>
+          </div>
                         )}
-                      </div>
+        </div>
 
-                      {editingImprovementId === improvement.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            value={editImprovementText}
-                            onChange={(e) => setEditImprovementText(e.target.value)}
-                            className="w-full p-3 border border-gray-300 rounded text-sm"
-                            rows={6}
-                          />
-                          <div className="flex gap-2 justify-end">
-                            <button
-                              onClick={() => setEditingImprovementId(null)}
-                              className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
-                            >
-                              Cancelar
-                            </button>
-                            <button
-                              onClick={() => handleUpdateImprovement(improvement.id!)}
-                              className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
-                            >
-                              Guardar
-                            </button>
-                          </div>
-                        </div>
-                      ) : (
-                        <div className="text-gray-700 whitespace-pre-line leading-relaxed">
-                          {improvement.description}
-                        </div>
-                      )}
-
-                      {improvement.affectedSteps && improvement.affectedSteps.length > 0 && (
-                        <div className="mt-3 text-sm text-gray-600">
-                          <strong>Pasos afectados:</strong> {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
-              )}
+        {editingImprovementId === improvement.id ? (
+          <div className="space-y-2">
+            <textarea
+              value={editImprovementText}
+              onChange={(e) => setEditImprovementText(e.target.value)}
+              className="w-full p-3 border border-gray-300 rounded text-sm"
+              rows={6}
+            />
+            <div className="flex gap-2 justify-end">
+              <button
+                onClick={() => setEditingImprovementId(null)}
+                className="px-4 py-2 text-sm text-gray-600 hover:bg-gray-100 rounded"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => handleUpdateImprovement(improvement.id!)}
+                className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
+              >
+                Guardar
+              </button>
             </div>
+          </div>
+        ) : (
+          <div className="text-gray-700 whitespace-pre-line leading-relaxed">
+            {improvement.description}
+          </div>
+        )}
 
-            {/* Conclusión del Análisis */}
-            <div className="mt-8 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-6 border border-gray-200">
+        {improvement.affectedSteps && improvement.affectedSteps.length > 0 && (
+          <div className="mt-3 text-sm text-gray-600">
+            <strong>Pasos afectados:</strong> {improvement.affectedSteps.map(id => getStepName(id)).join(', ')}
+          </div>
+        )}
+    </div>
+  ))
+}
+                </div >
+              )}
+            </div >
+
+  {/* Conclusión del Análisis */ }
+  < div className = "mt-8 bg-gradient-to-r from-gray-50 to-slate-50 rounded-lg p-6 border border-gray-200" >
               <h3 className="text-lg font-semibold text-gray-900 mb-3">
                 📋 Conclusión del Análisis
               </h3>
@@ -890,11 +879,11 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                   </p>
                 )}
               </div>
-            </div>
-          </div>
+            </div >
+          </div >
 
-          {/* Workflow Package Preview */}
-          <div className="bg-white rounded-lg shadow p-8">
+  {/* Workflow Package Preview */ }
+  < div className = "bg-white rounded-lg shadow p-8" >
             <h2 className="text-xl font-semibold mb-6">📦 Resumen del flujo de trabajo</h2>
 
             <div className="mb-6 p-4 bg-blue-50 border border-blue-100 rounded-lg text-blue-900 text-sm leading-relaxed">
@@ -929,7 +918,7 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
               </div>
             </div>
 
-            {/* Checklist Final */}
+{/* Checklist Final */ }
             <div className="mt-8 border-t pt-6">
               <h3 className="text-lg font-medium text-gray-900 mb-4">Checklist final</h3>
               <div className="space-y-3">
@@ -979,9 +968,9 @@ export default function SummaryPage({ params }: { params: { id: string } }) {
                 {loading ? 'Generando PDF...' : '📄 Exportar PDF'}
               </button>
             </div>
-          </div>
-        </div>
-      </PageTransition>
-    </div>
+          </div >
+        </div >
+      </PageTransition >
+    </div >
   )
 }
